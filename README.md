@@ -52,8 +52,8 @@ Copy `.env.example` to `.env.local` to unlock more:
 | `ANTHROPIC_API_KEY` | Claude-written narrative and reasoning instead of the deterministic fallback |
 | `OPENAI_API_KEY` | Enables OpenAI as a selectable server-side reasoning provider |
 | `VOYAGE_API_KEY` | Semantic memory retrieval (the Claude API has no embeddings endpoint) |
-| Supabase vars | Per-user persistent memory, conversations and audit history |
-| `TRAJECTORY_AUTH_ENABLED=true` | Supabase Auth and protected user workspaces after migrations are applied |
+| Supabase vars | Per-user authentication, persistent memory, conversations and audit history |
+| `TRAJECTORY_AUTH_ENABLED=false` | Optional incident kill switch for an otherwise complete Supabase environment |
 | Connector OAuth variables | Per-user connect/disconnect, health and sync lifecycle |
 
 The interface footer shows which mode you are in.
@@ -151,8 +151,8 @@ defines the daily background-intelligence schedule; no custom build output is re
    **Next.js** automatically. Keep the root directory, build command and output
    settings at their detected defaults.
 
-4. **Configure environment variables.** In the import screen, add the four
-   Required variables from `.env.example` to the **Production** environment:
+4. **Configure environment variables.** In the import screen, add the required
+   variables from `.env.example` to the **Production** environment:
 
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
@@ -169,10 +169,10 @@ defines the daily background-intelligence schedule; no custom build output is re
    to test. Never expose service, provider, OAuth or encryption secrets with a
    `NEXT_PUBLIC_` prefix.
 
-   Keep `TRAJECTORY_AUTH_ENABLED=false` until the migrations and provider
-   configuration are complete. Then set it to `true` in Preview first, verify
-   signup, verification, reset and OAuth, and promote the same configuration to
-   Production.
+   Authentication activates automatically when the Supabase URL, browser key
+   and service-role key are all present. Use `TRAJECTORY_AUTH_ENABLED=false`
+   only as an incident kill switch. Verify signup, verification and reset in
+   Preview before promoting new authentication configuration to Production.
 
 5. **Deploy.** Choose **Deploy**. Subsequent pushes to the configured production
    branch create production deployments; other branches receive preview URLs.
