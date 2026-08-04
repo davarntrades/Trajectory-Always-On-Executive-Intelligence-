@@ -3,6 +3,7 @@ import {
   type ExperienceState,
 } from "@/components/trajectory/trajectory-experience";
 import { config } from "@/lib/config";
+import { providerOptions } from "@/lib/providers";
 import { computeState } from "@/lib/state/compute";
 
 export const dynamic = "force-dynamic";
@@ -31,5 +32,12 @@ export default async function Home() {
       : undefined,
   };
 
-  return <TrajectoryExperience ownerName={config.ownerName} state={experienceState} />;
+  return (
+    <TrajectoryExperience
+      ownerName={config.ownerName}
+      state={experienceState}
+      providers={providerOptions()}
+      defaultProvider={state.provider ?? config.defaultProvider}
+    />
+  );
 }

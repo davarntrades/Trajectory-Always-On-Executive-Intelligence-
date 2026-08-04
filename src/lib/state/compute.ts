@@ -8,6 +8,7 @@
  */
 
 import { retrieveMemory, standingContext } from "@/lib/memory";
+import type { ProviderPreference } from "@/lib/providers";
 import { runEngine } from "@/lib/state/engine";
 import { synthesise } from "@/lib/state/reasoner";
 import { getStore } from "@/lib/store";
@@ -27,6 +28,10 @@ export interface ComputeOptions {
   simulate?: boolean;
   /** Trajectories per arm. Lower for cheap refreshes. */
   trajectories?: number;
+  /** Provider selected for this synthesis. Defaults to automatic selection. */
+  provider?: ProviderPreference;
+  /** Optional spoken or typed input used to shape the provider's explanation. */
+  userInput?: string;
 }
 
 export async function computeState(
@@ -61,7 +66,10 @@ export async function computeState(
 
   const narrative = options.deterministicOnly
     ? undefined
-    : await synthesise(engine, memories);
+    : await synthesise(engine, memories, {
+        provider: options.provider,
+        userInput: options.userInput,
+      });
 
   const resolved = narrative ?? {
     todaysObjective: engine.todaysObjective,
@@ -85,6 +93,7 @@ export async function computeState(
     todaysObjective: resolved.todaysObjective,
     signals: engine.signals,
     outlook,
+    provider: resolved.provider,
     model: resolved.model,
   };
 

@@ -243,6 +243,7 @@ export interface TrajectoryState {
   signals: StateSignals;
   /** Forward simulation. Absent when simulation is disabled or failed. */
   outlook?: Outlook;
+  provider?: "anthropic" | "openai";
   model?: string;
 }
 

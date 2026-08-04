@@ -4,7 +4,7 @@
  * Trajectory is designed to run in three modes without code changes:
  *
  *   1. No credentials      → seeded local store, deterministic engine only.
- *   2. ANTHROPIC_API_KEY   → engine + Claude narrative reasoning.
+ *   2. Provider API key    → engine + provider narrative reasoning.
  *   3. + Supabase          → persistent memory, real event log, audit trail.
  *
  * This is deliberate: the state engine is the part worth verifying, and it must
@@ -13,6 +13,7 @@
 
 export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  openaiApiKey: process.env.OPENAI_API_KEY,
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -22,10 +23,17 @@ export const config = {
   ownerName: process.env.TRAJECTORY_OWNER_NAME ?? "Davarn",
   timezone: process.env.TRAJECTORY_TIMEZONE ?? "Europe/London",
 
-  model: "claude-opus-5",
+  anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
+  openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.1",
+  defaultProvider:
+    process.env.TRAJECTORY_DEFAULT_PROVIDER === "openai" ||
+    process.env.TRAJECTORY_DEFAULT_PROVIDER === "anthropic"
+      ? process.env.TRAJECTORY_DEFAULT_PROVIDER
+      : "auto",
 } as const;
 
 export const hasClaude = () => Boolean(config.anthropicApiKey);
+export const hasOpenAI = () => Boolean(config.openaiApiKey);
 
 export const hasSupabase = () =>
   Boolean(config.supabaseUrl && config.supabaseServiceKey);
@@ -50,10 +58,10 @@ export function productionEnvironmentStatus() {
 /** Which mode the app is actually running in — surfaced in the UI. */
 export function runtimeMode(): {
   store: "supabase" | "seed";
-  reasoning: "claude" | "deterministic";
+  reasoning: "anthropic" | "openai" | "deterministic";
 } {
   return {
     store: hasSupabase() ? "supabase" : "seed",
-    reasoning: hasClaude() ? "claude" : "deterministic",
+    reasoning: hasClaude() ? "anthropic" : hasOpenAI() ? "openai" : "deterministic",
   };
 }
