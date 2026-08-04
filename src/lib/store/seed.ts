@@ -1,0 +1,492 @@
+/**
+ * Seed dataset.
+ *
+ * This exists so the state engine can be exercised and verified before any
+ * connector is wired to a live account. Dates are generated relative to "now"
+ * so momentum, staleness and deadline pressure stay meaningful whenever it runs.
+ *
+ * Replace by connecting real accounts — nothing else in the system changes.
+ */
+
+import type {
+  CalendarEntry,
+  Entity,
+  Goal,
+  Memory,
+  Opportunity,
+  Project,
+  Relationship,
+  Task,
+  TrajectoryEvent,
+} from "@/lib/types";
+
+const now = () => Date.now();
+const daysAgo = (d: number) => new Date(now() - d * 864e5).toISOString();
+const daysAhead = (d: number) => new Date(now() + d * 864e5).toISOString();
+const hoursAhead = (h: number) => new Date(now() + h * 36e5).toISOString();
+
+export const seedEntities: Entity[] = [
+  {
+    id: "ent-guardianos",
+    kind: "product",
+    name: "GuardianOS",
+    aliases: ["Guardian", "GOS"],
+    summary: "Runtime governance layer for autonomous AI systems.",
+    attributes: { stage: "deployed" },
+    salience: 0.95,
+    lastSeenAt: daysAgo(1),
+  },
+  {
+    id: "ent-morrison",
+    kind: "product",
+    name: "Morrison Runtime Governance",
+    aliases: ["MRG"],
+    summary: "Admissibility and trajectory verification engine underpinning GuardianOS.",
+    attributes: { stage: "active development" },
+    salience: 0.9,
+    lastSeenAt: daysAgo(2),
+  },
+  {
+    id: "ent-northgate",
+    kind: "company",
+    name: "Northgate Health",
+    aliases: ["Northgate", "the healthcare prospect"],
+    summary:
+      "NHS-adjacent healthcare provider. Long procurement cycle, clinical safety sign-off required.",
+    attributes: { sector: "healthcare", procurementWeeks: 6 },
+    salience: 0.85,
+    lastSeenAt: daysAgo(9),
+  },
+  {
+    id: "ent-company-x",
+    kind: "company",
+    name: "Company X",
+    aliases: ["CoX"],
+    summary:
+      "Mid-market fintech. Short buying cycle — decisions typically close within 10 days of demo.",
+    attributes: { sector: "fintech", buyingCycleDays: 10 },
+    salience: 0.88,
+    lastSeenAt: daysAgo(4),
+  },
+  {
+    id: "ent-priya",
+    kind: "person",
+    name: "Priya Raman",
+    aliases: ["Priya"],
+    summary: "Head of Clinical Safety at Northgate Health. Decision maker on compliance.",
+    attributes: { role: "Head of Clinical Safety", company: "Northgate Health" },
+    salience: 0.8,
+    lastSeenAt: daysAgo(9),
+  },
+  {
+    id: "ent-tom",
+    kind: "person",
+    name: "Tom Aldridge",
+    aliases: ["Tom"],
+    summary: "CTO at Company X. Technical champion, moves fast, prefers concise updates.",
+    attributes: { role: "CTO", company: "Company X" },
+    salience: 0.82,
+    lastSeenAt: daysAgo(4),
+  },
+  {
+    id: "ent-sofia",
+    kind: "person",
+    name: "Sofia Lang",
+    aliases: ["Sofia"],
+    summary: "Contract engineer on the GuardianOS deployment pipeline.",
+    attributes: { role: "Engineer" },
+    salience: 0.6,
+    lastSeenAt: daysAgo(1),
+  },
+];
+
+export const seedRelationships: Relationship[] = [
+  { id: "rel-1", fromId: "ent-priya", toId: "ent-northgate", kind: "works_at", strength: 0.9 },
+  { id: "rel-2", fromId: "ent-tom", toId: "ent-company-x", kind: "works_at", strength: 0.9 },
+  { id: "rel-3", fromId: "ent-morrison", toId: "ent-guardianos", kind: "powers", strength: 0.95 },
+  { id: "rel-4", fromId: "ent-sofia", toId: "ent-guardianos", kind: "contributes_to", strength: 0.7 },
+];
+
+export const seedGoals: Goal[] = [
+  {
+    id: "goal-revenue",
+    title: "Reach £250k committed ARR",
+    description: "Convert the current pipeline into signed contracts.",
+    horizon: "quarter",
+    target: "£250,000 ARR",
+    priority: 1,
+    status: "active",
+  },
+  {
+    id: "goal-guardianos",
+    title: "GuardianOS production-ready for regulated deployments",
+    description:
+      "Clinical-safety-grade audit trail and formal admissibility guarantees.",
+    horizon: "quarter",
+    target: "Two regulated customers in production",
+    priority: 2,
+    status: "active",
+  },
+];
+
+export const seedProjects: Project[] = [
+  {
+    id: "proj-guardianos",
+    goalId: "goal-guardianos",
+    name: "GuardianOS Deployment",
+    description: "Production rollout and hardening of the runtime governance layer.",
+    status: "active",
+    priority: 1,
+    valueScore: 0.9,
+  },
+  {
+    id: "proj-northgate",
+    goalId: "goal-revenue",
+    name: "Northgate Health Pilot",
+    description: "Clinical safety pilot — blocked on compliance documentation.",
+    status: "active",
+    priority: 1,
+    valueScore: 0.95,
+  },
+  {
+    id: "proj-companyx",
+    goalId: "goal-revenue",
+    name: "Company X Rollout",
+    description: "Post-demo commercial close.",
+    status: "active",
+    priority: 2,
+    valueScore: 0.75,
+  },
+  {
+    id: "proj-morrison",
+    goalId: "goal-guardianos",
+    name: "Morrison Governance Engine",
+    description: "Sector-domain expansion and adversarial hardening.",
+    status: "active",
+    priority: 3,
+    valueScore: 0.6,
+  },
+];
+
+export const seedTasks: Task[] = [
+  {
+    id: "task-compliance-doc",
+    projectId: "proj-northgate",
+    title: "Complete clinical safety compliance pack for Northgate",
+    detail:
+      "DCB0129 hazard log plus GuardianOS audit-trail evidence. Blocks pilot start, contract, and the reference case study.",
+    status: "open",
+    effortHours: 6,
+    impact: 0.95,
+    dueAt: daysAhead(3),
+    blockedBy: [],
+    source: "notion",
+  },
+  {
+    id: "task-pilot-kickoff",
+    projectId: "proj-northgate",
+    title: "Run Northgate pilot kickoff",
+    status: "blocked",
+    effortHours: 3,
+    impact: 0.9,
+    blockedBy: ["task-compliance-doc"],
+    source: "notion",
+  },
+  {
+    id: "task-northgate-contract",
+    projectId: "proj-northgate",
+    title: "Issue Northgate pilot contract",
+    status: "blocked",
+    effortHours: 2,
+    impact: 0.85,
+    blockedBy: ["task-compliance-doc"],
+    source: "notion",
+  },
+  {
+    id: "task-case-study",
+    projectId: "proj-northgate",
+    title: "Publish regulated-deployment case study",
+    status: "blocked",
+    effortHours: 4,
+    impact: 0.6,
+    blockedBy: ["task-pilot-kickoff"],
+    source: "notion",
+  },
+  {
+    id: "task-followup-companyx",
+    projectId: "proj-companyx",
+    title: "Follow up with Tom Aldridge at Company X",
+    detail: "Demo was 4 days ago. Their buying cycle closes around day 10.",
+    status: "open",
+    effortHours: 0.5,
+    impact: 0.75,
+    dueAt: hoursAhead(6),
+    blockedBy: [],
+    source: "gmail",
+  },
+  {
+    id: "task-priya-reply",
+    projectId: "proj-northgate",
+    title: "Chase Priya Raman on procurement timeline",
+    status: "waiting",
+    effortHours: 0.5,
+    impact: 0.7,
+    blockedBy: [],
+    waitingOn: "ent-priya",
+    waitingSince: daysAgo(9),
+    source: "gmail",
+  },
+  {
+    id: "task-sector-tests",
+    projectId: "proj-morrison",
+    title: "Extend adversarial test suite to two new sector domains",
+    status: "in_progress",
+    effortHours: 8,
+    impact: 0.5,
+    blockedBy: [],
+    source: "github",
+  },
+  {
+    id: "task-latency",
+    projectId: "proj-guardianos",
+    title: "Reduce admissibility check latency below 40ms p99",
+    status: "open",
+    effortHours: 10,
+    impact: 0.45,
+    blockedBy: [],
+    source: "github",
+  },
+];
+
+export const seedOpportunities: Opportunity[] = [
+  {
+    id: "opp-northgate",
+    companyId: "ent-northgate",
+    contactId: "ent-priya",
+    name: "Northgate Health — clinical safety pilot",
+    stage: "proposal",
+    value: 120000,
+    currency: "GBP",
+    probability: 0.45,
+    lastContactAt: daysAgo(9),
+    expectedReplyDays: 5,
+    nextStep: "Deliver compliance pack, then confirm pilot dates",
+  },
+  {
+    id: "opp-companyx",
+    companyId: "ent-company-x",
+    contactId: "ent-tom",
+    name: "Company X — platform licence",
+    stage: "negotiation",
+    value: 85000,
+    currency: "GBP",
+    probability: 0.6,
+    lastContactAt: daysAgo(4),
+    expectedReplyDays: 3,
+    nextStep: "Follow up post-demo before their cycle closes",
+  },
+  {
+    id: "opp-inbound",
+    name: "Inbound — insurance sector enquiry",
+    stage: "discovery",
+    value: 40000,
+    currency: "GBP",
+    probability: 0.2,
+    lastContactAt: daysAgo(2),
+    expectedReplyDays: 7,
+    nextStep: "Qualify on the discovery call",
+  },
+];
+
+export const seedEvents: TrajectoryEvent[] = [
+  {
+    id: "evt-1",
+    source: "github",
+    type: "github.pr_merged",
+    title: "GuardianOS deployment pipeline — release v0.4.2 merged",
+    body: "Deployment completed successfully to production.",
+    occurredAt: daysAgo(1),
+    entityIds: ["ent-guardianos", "ent-sofia"],
+    projectId: "proj-guardianos",
+    payload: { repo: "guardianos", number: 212 },
+  },
+  {
+    id: "evt-2",
+    source: "github",
+    type: "github.pr_merged",
+    title: "Morrison — sector domain expansion merged (#9)",
+    occurredAt: daysAgo(2),
+    entityIds: ["ent-morrison"],
+    projectId: "proj-morrison",
+    payload: { repo: "morrison-runtime-governance", number: 9 },
+  },
+  {
+    id: "evt-3",
+    source: "github",
+    type: "github.pr_merged",
+    title: "Morrison — authorisation-aware sector Ω (#10)",
+    occurredAt: daysAgo(1),
+    entityIds: ["ent-morrison"],
+    projectId: "proj-morrison",
+    payload: { repo: "morrison-runtime-governance", number: 10 },
+  },
+  {
+    id: "evt-4",
+    source: "gmail",
+    type: "email.sent",
+    title: "Sent: GuardianOS demo follow-up → Tom Aldridge",
+    body: "Recap of the demo and proposed commercial terms.",
+    occurredAt: daysAgo(4),
+    entityIds: ["ent-tom", "ent-company-x"],
+    projectId: "proj-companyx",
+    payload: { to: "tom@companyx.example" },
+  },
+  {
+    id: "evt-5",
+    source: "gmail",
+    type: "email.sent",
+    title: "Sent: Pilot scope and compliance questions → Priya Raman",
+    occurredAt: daysAgo(9),
+    entityIds: ["ent-priya", "ent-northgate"],
+    projectId: "proj-northgate",
+    payload: { to: "priya@northgate.example" },
+  },
+  {
+    id: "evt-6",
+    source: "gmail",
+    type: "email.received",
+    title: "New enquiry: governance tooling for insurance underwriting",
+    occurredAt: daysAgo(2),
+    entityIds: [],
+    payload: { from: "ops@insurer.example" },
+  },
+  {
+    id: "evt-7",
+    source: "notion",
+    type: "notion.page_updated",
+    title: "Northgate pilot — compliance requirements updated",
+    body: "DCB0129 hazard log added as a hard prerequisite for pilot start.",
+    occurredAt: daysAgo(3),
+    entityIds: ["ent-northgate"],
+    projectId: "proj-northgate",
+    payload: { page: "Northgate Pilot" },
+  },
+  {
+    id: "evt-8",
+    source: "calendar",
+    type: "calendar.event_created",
+    title: "Discovery call booked — insurance sector enquiry",
+    occurredAt: daysAgo(1),
+    entityIds: [],
+    payload: {},
+  },
+  {
+    id: "evt-9",
+    source: "github",
+    type: "github.issue_opened",
+    title: "GuardianOS — p99 latency regression on admissibility checks",
+    occurredAt: daysAgo(5),
+    entityIds: ["ent-guardianos"],
+    projectId: "proj-guardianos",
+    payload: { repo: "guardianos", number: 214 },
+  },
+  {
+    id: "evt-10",
+    source: "notion",
+    type: "notion.page_updated",
+    title: "Q3 revenue tracker updated",
+    occurredAt: daysAgo(6),
+    entityIds: [],
+    payload: {},
+  },
+];
+
+export const seedMemories: Memory[] = [
+  {
+    id: "mem-1",
+    kind: "semantic",
+    content:
+      "Northgate Health's procurement cycle runs roughly six weeks and cannot start until clinical safety sign-off (DCB0129) is complete. Compliance is the gate, not price.",
+    entityIds: ["ent-northgate", "ent-priya"],
+    confidence: 0.9,
+    salience: 0.9,
+    occurredAt: daysAgo(20),
+  },
+  {
+    id: "mem-2",
+    kind: "semantic",
+    content:
+      "Company X decisions typically close within 10 days of a demo. Tom Aldridge responds fastest to short, specific messages with a single ask.",
+    entityIds: ["ent-company-x", "ent-tom"],
+    confidence: 0.85,
+    salience: 0.85,
+    occurredAt: daysAgo(30),
+  },
+  {
+    id: "mem-3",
+    kind: "preference",
+    content:
+      "Davarn prefers one recommended action at a time with the reasoning stated explicitly, not a list of options.",
+    entityIds: [],
+    confidence: 0.95,
+    salience: 0.8,
+    occurredAt: daysAgo(40),
+  },
+  {
+    id: "mem-4",
+    kind: "mistake",
+    content:
+      "The previous healthcare deal stalled because compliance documentation was started after the pilot was agreed rather than before. Front-load compliance work.",
+    entityIds: ["ent-northgate"],
+    confidence: 0.9,
+    salience: 0.95,
+    occurredAt: daysAgo(90),
+  },
+  {
+    id: "mem-5",
+    kind: "decision",
+    content:
+      "Decided to position GuardianOS on formal admissibility guarantees rather than generic AI safety — regulated buyers respond to provability.",
+    entityIds: ["ent-guardianos", "ent-morrison"],
+    confidence: 0.9,
+    salience: 0.75,
+    occurredAt: daysAgo(45),
+  },
+  {
+    id: "mem-6",
+    kind: "episodic",
+    content:
+      "GuardianOS v0.4.2 deployed to production successfully with no rollback. Sofia handled the release.",
+    entityIds: ["ent-guardianos", "ent-sofia"],
+    confidence: 1,
+    salience: 0.6,
+    occurredAt: daysAgo(1),
+  },
+];
+
+export const seedCalendar: CalendarEntry[] = [
+  {
+    id: "cal-1",
+    title: "Discovery call — insurance sector enquiry",
+    startAt: hoursAhead(3),
+    endAt: hoursAhead(4),
+    attendees: ["ops@insurer.example"],
+    location: "Google Meet",
+  },
+  {
+    id: "cal-2",
+    title: "GuardianOS engineering sync",
+    startAt: hoursAhead(7),
+    endAt: hoursAhead(7.5),
+    attendees: ["Sofia Lang"],
+    location: "Google Meet",
+  },
+  {
+    id: "cal-3",
+    title: "Northgate pilot review (provisional)",
+    startAt: daysAhead(4),
+    endAt: daysAhead(4),
+    attendees: ["Priya Raman"],
+    location: "Teams",
+  },
+];
