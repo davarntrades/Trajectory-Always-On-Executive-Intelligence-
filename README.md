@@ -52,7 +52,20 @@ Copy `.env.example` to `.env.local` to unlock more:
 | Supabase vars | Persistent memory, event log and audit trail across restarts |
 | Connector tokens | Live data instead of seed (Phase 2) |
 
-The dashboard header shows which mode you are in.
+The interface footer shows which mode you are in.
+
+For a production-like local verification, copy the example environment file and
+run the same checks used before deployment:
+
+```bash
+cp .env.example .env.local
+npm run check
+npm start
+```
+
+The app can still boot without credentials using its deterministic seed mode,
+but a production deployment needs all four variables marked **Required** in
+`.env.example` to provide Claude reasoning and durable Supabase state.
 
 ---
 
@@ -66,6 +79,7 @@ The dashboard header shows which mode you are in.
 | `GET/POST /api/actions` | List actions + audit; propose, decide, execute |
 | `GET /api/memory?q=` | Retrieve memory. `&check=1` runs the never-ask-twice check |
 | `GET /api/voice/brief` | The spoken briefing |
+| `GET /api/health` | Value-free deployment and environment readiness diagnostics |
 
 Ingest an event and watch the state change:
 
@@ -80,6 +94,65 @@ curl -X POST localhost:3000/api/events -H 'content-type: application/json' -d '{
 ```
 
 Events are de-duplicated on `(source, externalId)`, so replaying a webhook is safe.
+
+---
+
+## Deploying to Vercel
+
+Trajectory uses the Next.js App Router and deploys through Vercel's standard
+Git integration. It does not require a `vercel.json` or custom build settings.
+
+1. **Clone the repository.**
+
+   ```bash
+   git clone https://github.com/davarntrades/Trajectory-Always-On-Executive-Intelligence-.git
+   cd Trajectory-Always-On-Executive-Intelligence-
+   npm install
+   npm run check
+   ```
+
+2. **Connect GitHub to Vercel.** Sign in to Vercel, open **Add New → Project**,
+   and connect the GitHub account that can access the repository.
+
+3. **Import the project.** Select the Trajectory repository. Vercel should detect
+   **Next.js** automatically. Keep the root directory, build command and output
+   settings at their detected defaults.
+
+4. **Configure environment variables.** In the import screen, add the four
+   Required variables from `.env.example` to the **Production** environment:
+
+   - `ANTHROPIC_API_KEY`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+
+   Apply `supabase/migrations/0001_init.sql` and then `0002_loop.sql` to that
+   Supabase project before the first persistent run. Add Optional variables only
+   for the capabilities you intend to test. Never expose
+   `SUPABASE_SERVICE_ROLE_KEY` with a `NEXT_PUBLIC_` prefix.
+
+5. **Deploy.** Choose **Deploy**. Subsequent pushes to the configured production
+   branch create production deployments; other branches receive preview URLs.
+
+6. **Verify the deployment.** Open `/api/health` on the deployed URL and confirm
+   it reports `"productionReady": true`, `"store": "supabase"`, and
+   `"reasoning": "claude"`. Then load the home screen and test the orb on both a
+   desktop browser and a microphone-capable phone. If environment variables were
+   added after a build, redeploy so the new values take effect.
+
+7. **Connect a custom domain (optional).** Open the Vercel project's
+   **Settings → Domains**, add the domain, and follow the DNS records Vercel
+   provides. Verify the domain after DNS propagation.
+
+### Private testing
+
+Trajectory is currently a single-operator build and does not yet implement
+end-user authentication. Enable **Vercel Deployment Protection** before using
+real personal or business data. Keep production and preview deployments protected
+until application authentication is added.
+
+The maintained release gate is in
+[`PRODUCTION_CHECKLIST.md`](./PRODUCTION_CHECKLIST.md).
 
 ---
 
