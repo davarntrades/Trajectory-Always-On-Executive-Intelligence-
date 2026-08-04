@@ -203,6 +203,33 @@ export interface RecommendedAction {
   tier: ActionTier;
 }
 
+/**
+ * Forward-looking view, produced by the simulator.
+ *
+ * Separate from `signals` because these are claims about the *future* and carry
+ * a calibration status. Nothing here should be presented with the same
+ * authority as a measured signal until predictions have been scored against
+ * outcomes.
+ */
+export interface Outlook {
+  horizonDays: number;
+  /** P(primary objective on track at the horizon) under no intervention. */
+  confidence: number;
+  primaryObjective?: string;
+  /** Relative improvement in trajectory value from the recommended action. */
+  expectedTrajectoryChange: number;
+  /** Monte Carlo standard error on that estimate. */
+  standardError: number;
+  /** True when the estimate is indistinguishable from sampling noise. */
+  withinNoise: boolean;
+  calibration: "calibrated" | "provisional" | "uncalibrated";
+  objectiveOutlook: { label: string; onTrack: number }[];
+  /** Value of the same action taken later — the cost of delay. */
+  decay: { days: number; expectedDelta: number }[];
+  trajectories: number;
+  seed: number;
+}
+
 export interface TrajectoryState {
   computedAt: string;
   trajectory: TrajectoryDirection;
@@ -214,6 +241,8 @@ export interface TrajectoryState {
   reasoning: string;
   todaysObjective: string;
   signals: StateSignals;
+  /** Forward simulation. Absent when simulation is disabled or failed. */
+  outlook?: Outlook;
   model?: string;
 }
 

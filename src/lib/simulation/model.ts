@@ -431,6 +431,14 @@ export type InterventionKind =
 export interface Intervention {
   kind: InterventionKind;
   targetId?: string;
+  /**
+   * The engine candidate this came from.
+   *
+   * Distinct from `targetId` because a task-shaped candidate can be routed to
+   * an opportunity-shaped intervention. Callers match results back to the
+   * recommended action by this, not by target.
+   */
+  candidateId?: string;
   label: string;
   /** Hours consumed at t=0 — this is what makes arms genuinely exclusive. */
   effortHours: number;

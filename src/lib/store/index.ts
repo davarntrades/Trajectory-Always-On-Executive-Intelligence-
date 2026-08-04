@@ -34,6 +34,20 @@ import {
   seedTasks,
 } from "./seed";
 
+/** A notification as persisted — the delivery record, not the rendering. */
+export interface StoredNotification {
+  id: string;
+  at: string;
+  channel: "interrupt" | "digest";
+  cadence?: string;
+  title: string;
+  body: string;
+  salience: number;
+  changeKinds: string[];
+  speech: string;
+  delivered: boolean;
+}
+
 export interface TrajectoryStore {
   entities(): Promise<Entity[]>;
   relationships(): Promise<Relationship[]>;
@@ -48,6 +62,9 @@ export interface TrajectoryStore {
   appendEvents(events: TrajectoryEvent[]): Promise<number>;
   saveSnapshot(state: TrajectoryState): Promise<void>;
   latestSnapshot(): Promise<TrajectoryState | null>;
+
+  notifications(limit?: number): Promise<StoredNotification[]>;
+  appendNotification(n: StoredNotification): Promise<void>;
 
   actions(): Promise<TrajectoryAction[]>;
   saveAction(action: TrajectoryAction): Promise<void>;
@@ -67,6 +84,7 @@ export interface TrajectoryStore {
 const memoryState = {
   events: [...seedEvents],
   snapshots: [] as TrajectoryState[],
+  notifications: [] as StoredNotification[],
   actions: [] as TrajectoryAction[],
   audit: [] as AuditEntry[],
 };
@@ -127,6 +145,14 @@ class SeedStore implements TrajectoryStore {
   }
   async latestSnapshot() {
     return memoryState.snapshots[0] ?? null;
+  }
+
+  async notifications(limit = 50) {
+    return memoryState.notifications.slice(0, limit);
+  }
+  async appendNotification(n: StoredNotification) {
+    memoryState.notifications.unshift(n);
+    memoryState.notifications = memoryState.notifications.slice(0, 200);
   }
 
   async actions() {
@@ -308,6 +334,47 @@ class SupabaseStore implements TrajectoryStore {
       signals: data.signals,
       model: data.model ?? undefined,
     } as TrajectoryState;
+  }
+
+  async notifications(limit = 50) {
+    const sb = await this.client();
+    const { data, error } = await sb
+      .from("notifications")
+      .select("*")
+      .eq("owner_id", config.ownerId)
+      .order("at", { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`notifications: ${error.message}`);
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      at: r.at,
+      channel: r.channel,
+      cadence: r.cadence ?? undefined,
+      title: r.title,
+      body: r.body ?? "",
+      salience: r.salience ?? 0,
+      changeKinds: r.change_kinds ?? [],
+      speech: r.speech ?? "",
+      delivered: r.delivered ?? false,
+    })) as StoredNotification[];
+  }
+
+  async appendNotification(n: StoredNotification) {
+    const sb = await this.client();
+    const { error } = await sb.from("notifications").insert({
+      id: n.id,
+      owner_id: config.ownerId,
+      at: n.at,
+      channel: n.channel,
+      cadence: n.cadence ?? null,
+      title: n.title,
+      body: n.body,
+      salience: n.salience,
+      change_kinds: n.changeKinds,
+      speech: n.speech,
+      delivered: n.delivered,
+    });
+    if (error) throw new Error(`appendNotification: ${error.message}`);
   }
 
   async actions() {

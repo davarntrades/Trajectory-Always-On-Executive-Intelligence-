@@ -39,6 +39,8 @@ export interface ObjectiveShift {
 
 export interface SimulatedRecommendation {
   actionId?: string;
+  /** The engine candidate this arm corresponds to. */
+  candidateId?: string;
   label: string;
   horizonDays: number;
 
@@ -238,6 +240,7 @@ export function simulate(
 
       return {
         actionId: candidate.targetId,
+        candidateId: candidate.candidateId,
         label: candidate.label,
         horizonDays,
         expectedDelta: round(summary.mean),

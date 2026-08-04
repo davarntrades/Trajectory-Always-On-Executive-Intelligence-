@@ -9,32 +9,69 @@
 
 import { runEngine } from "@/lib/state/engine";
 import { getStore } from "@/lib/store";
-import type { ScoredCandidate } from "@/lib/types";
+import type { Entity, Opportunity, ScoredCandidate } from "@/lib/types";
 import type { Intervention } from "./model";
 import { simulate, type SimulationOptions, type SimulationReport } from "./run";
 
 export * from "./run";
 export type { Intervention, SimWorld } from "./model";
 
-/** Map an engine candidate onto a simulator intervention. */
-function toIntervention(c: ScoredCandidate): Intervention | null {
+/**
+ * Map an engine candidate onto a simulator intervention.
+ *
+ * A task can *be* a contact action. "Follow up with Tom Aldridge" is a task in
+ * the task list and a touch on Company X's deal in the pipeline — the same real
+ * act recorded twice. Modelling it only as task completion makes it score zero,
+ * because completing a task nothing depends on changes nothing, and the headline
+ * number then reads +0% for an action that genuinely moves a deal.
+ *
+ * So a task naming an opportunity's contact or company is routed to the
+ * contact intervention on that opportunity.
+ */
+function toIntervention(
+  c: ScoredCandidate,
+  opportunities: Opportunity[],
+  entities: Entity[],
+): Intervention | null {
   if (c.kind === "opportunity") {
     return {
       kind: "contact_opportunity",
       targetId: c.id,
+      candidateId: c.id,
       label: c.title,
       effortHours: c.effortHours,
     };
   }
-  if (c.kind === "task" || c.kind === "unblock") {
+
+  if (c.kind !== "task" && c.kind !== "unblock") return null;
+
+  const title = c.title.toLowerCase();
+  const contactMatch = opportunities.find((o) => {
+    const people = [o.contactId, o.companyId]
+      .map((id) => entities.find((e) => e.id === id))
+      .filter(Boolean);
+    return people.some((e) =>
+      [e!.name, ...e!.aliases].some((n) => title.includes(n.toLowerCase())),
+    );
+  });
+
+  if (contactMatch) {
     return {
-      kind: "complete_task",
-      targetId: c.id,
+      kind: "contact_opportunity",
+      targetId: contactMatch.id,
+      candidateId: c.id,
       label: c.title,
       effortHours: c.effortHours,
     };
   }
-  return null;
+
+  return {
+    kind: "complete_task",
+    targetId: c.id,
+    candidateId: c.id,
+    label: c.title,
+    effortHours: c.effortHours,
+  };
 }
 
 export interface RunSimulationOptions extends SimulationOptions {
@@ -116,7 +153,7 @@ export async function runSimulation(
 
   const candidates = engine.signals.candidates
     .slice(0, topK)
-    .map(toIntervention)
+    .map((c) => toIntervention(c, opportunities, entities))
     .filter((c): c is Intervention => c !== null);
 
   return simulate(
