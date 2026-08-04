@@ -202,6 +202,25 @@ button { font: inherit; }
   background: linear-gradient(90deg, transparent, rgba(168,204,255,.34), #fff);
   filter: blur(.35px);
 }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.header-controls { display: flex; align-items: center; gap: 12px; }
+.provider-setting { position: relative; animation: interface-awaken 1.2s cubic-bezier(.2,.75,.2,1) .4s both; }
+.provider-setting select {
+  min-height: 30px;
+  padding: 5px 25px 5px 10px;
+  border: 1px solid rgba(176, 202, 236, .14);
+  border-radius: 999px;
+  outline: none;
+  background: rgba(8, 15, 26, .58);
+  color: #aebed2;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: .06em;
+  color-scheme: dark;
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+}
+.provider-setting select:focus-visible { border-color: rgba(112,183,255,.55); box-shadow: 0 0 0 3px rgba(112,183,255,.1); }
 .presence { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; letter-spacing: .04em; animation: interface-awaken 1.2s cubic-bezier(.2,.75,.2,1) .55s both; }
 .presence-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 10px var(--emerald); animation: presence 3s ease-in-out infinite; }
 
@@ -386,6 +405,8 @@ button { font: inherit; }
   }
   .wordmark { font-size: 12px; letter-spacing: .14em; }
   .presence span:last-child { display: none; }
+  .header-controls { gap: 8px; }
+  .provider-setting select { max-width: 104px; min-height: 32px; padding-left: 9px; font-size: 9px; }
   .intelligence-stage { min-height: 430px; padding: 24px 0 26px; }
   .orb-system { width: min(250px, 72vw); }
   .orb-copy { min-height: 105px; }

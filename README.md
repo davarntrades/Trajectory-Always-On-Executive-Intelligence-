@@ -48,11 +48,28 @@ Copy `.env.example` to `.env.local` to unlock more:
 |---|---|
 | *(nothing)* | Full state engine, dashboard, voice, permissions, audit — on seed data |
 | `ANTHROPIC_API_KEY` | Claude-written narrative and reasoning instead of the deterministic fallback |
+| `OPENAI_API_KEY` | Enables OpenAI as a selectable server-side reasoning provider |
 | `VOYAGE_API_KEY` | Semantic memory retrieval (the Claude API has no embeddings endpoint) |
 | Supabase vars | Persistent memory, event log and audit trail across restarts |
 | Connector tokens | Live data instead of seed (Phase 2) |
 
 The interface footer shows which mode you are in.
+
+### Intelligence providers
+
+Trajectory's state engine remains deterministic and provider-independent. Claude
+and OpenAI are adapters used only to explain the already-ranked state and answer
+spoken input through that state. The provider can be selected from the compact
+control in the application header for the current session.
+
+Provider credentials are read only in server modules and are never returned by
+the provider metadata or briefing APIs. Configure `ANTHROPIC_API_KEY` and/or
+`OPENAI_API_KEY` in Vercel. Optional `ANTHROPIC_MODEL`, `OPENAI_MODEL` and
+`TRAJECTORY_DEFAULT_PROVIDER` variables override the defaults.
+
+`GET /api/providers` returns safe availability/model metadata. A spoken request
+is sent to `POST /api/voice/brief` with the transcript and selected provider;
+the response includes only the generated briefing and provider/model identity.
 
 For a production-like local verification, copy the example environment file and
 run the same checks used before deployment:
@@ -80,6 +97,8 @@ but a production deployment needs all four variables marked **Required** in
 | `GET /api/memory?q=` | Retrieve memory. `&check=1` runs the never-ask-twice check |
 | `GET /api/voice/brief` | The spoken briefing |
 | `GET /api/health` | Value-free deployment and environment readiness diagnostics |
+| `GET /api/providers` | Safe provider availability and model metadata |
+| `POST /api/voice/brief` | Generate a provider-backed response from recognised speech |
 
 Ingest an event and watch the state change:
 

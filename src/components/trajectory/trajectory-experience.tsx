@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Sparkles } from "lucide-react";
+import type { ProviderOption, ProviderPreference } from "@/lib/providers/types";
 import type { RiskLevel, TrajectoryDirection } from "@/lib/types";
 
 export interface ExperienceState {
@@ -24,6 +25,8 @@ type VoiceStatus = "idle" | "thinking" | "speaking" | "listening" | "unsupported
 interface BriefResponse {
   speech: string;
   lines: string[];
+  provider: "anthropic" | "openai" | "deterministic";
+  model: string | null;
 }
 
 interface SpeechRecognitionLike extends EventTarget {
@@ -82,14 +85,20 @@ function concise(text: string, limit = 150) {
 export function TrajectoryExperience({
   ownerName,
   state,
+  providers,
+  defaultProvider,
 }: {
   ownerName: string;
   state: ExperienceState;
+  providers: ProviderOption[];
+  defaultProvider: ProviderPreference;
 }) {
   const voiceSupported = useSyncExternalStore(subscribeNoop, supportsVoice, () => true);
   const [rawStatus, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [briefLines, setBriefLines] = useState<string[]>([]);
+  const [provider, setProvider] = useState<ProviderPreference>(defaultProvider);
+  const [activeModel, setActiveModel] = useState<string | null>(null);
   const orbRef = useRef<HTMLButtonElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptRef = useRef("");
@@ -99,6 +108,10 @@ export function TrajectoryExperience({
   const speechPulseRef = useRef<number | null>(null);
   const status = voiceSupported ? rawStatus : "unsupported";
   const active = status === "thinking" || status === "listening" || status === "speaking";
+
+  const chooseProvider = useCallback((next: ProviderPreference) => {
+    setProvider(next);
+  }, []);
 
   const resetOrbLevel = useCallback(() => {
     orbRef.current?.style.setProperty("--voice-scale", "1");
@@ -154,10 +167,18 @@ export function TrajectoryExperience({
   const deliverBrief = useCallback(async () => {
     setStatus("thinking");
     try {
-      const response = await fetch("/api/voice/brief");
+      const response = await fetch("/api/voice/brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: transcriptRef.current,
+          provider,
+        }),
+      });
       if (!response.ok) throw new Error(`Briefing failed: ${response.status}`);
       const brief = (await response.json()) as BriefResponse;
       setBriefLines(brief.lines);
+      setActiveModel(brief.model);
 
       const utterance = new SpeechSynthesisUtterance(brief.speech);
       utterance.lang = "en-GB";
@@ -181,7 +202,7 @@ export function TrajectoryExperience({
       setStatus("idle");
       setBriefLines(["Trajectory could not prepare the briefing. Please try again."]);
     }
-  }, [resetOrbLevel]);
+  }, [provider, resetOrbLevel]);
 
   const stop = useCallback(() => {
     transcriptRef.current = "";
@@ -281,9 +302,26 @@ export function TrajectoryExperience({
           <sup>©</sup>
         </a>
 
-        <div className="presence">
-          <span className="presence-dot" />
-          <span>{statusLabel}</span>
+        <div className="header-controls">
+          <label className="provider-setting">
+            <span className="sr-only">Intelligence provider</span>
+            <select
+              value={provider}
+              onChange={(event) => chooseProvider(event.target.value as ProviderPreference)}
+              aria-label="Intelligence provider"
+            >
+              <option value="auto">Auto</option>
+              {providers.map((option) => (
+                <option key={option.id} value={option.id} disabled={!option.configured}>
+                  {option.label}{option.configured ? "" : " — unavailable"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="presence">
+            <span className="presence-dot" />
+            <span>{statusLabel}</span>
+          </div>
         </div>
       </header>
 
@@ -365,7 +403,7 @@ export function TrajectoryExperience({
 
       <footer className="experience-footer">
         <span>Live alongside your future.</span>
-        <span>State updated {new Date(state.computedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+        <span>{activeModel ? `${activeModel} · ` : ""}State updated {new Date(state.computedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
       </footer>
     </main>
   );
