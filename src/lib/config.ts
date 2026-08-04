@@ -4,7 +4,7 @@
  * Trajectory is designed to run in three modes without code changes:
  *
  *   1. No credentials      → seeded local store, deterministic engine only.
- *   2. ANTHROPIC_API_KEY   → engine + Claude narrative reasoning + embeddings.
+ *   2. ANTHROPIC_API_KEY   → engine + Claude narrative reasoning.
  *   3. + Supabase          → persistent memory, real event log, audit trail.
  *
  * This is deliberate: the state engine is the part worth verifying, and it must
@@ -28,7 +28,24 @@ export const config = {
 export const hasClaude = () => Boolean(config.anthropicApiKey);
 
 export const hasSupabase = () =>
-  Boolean(config.supabaseUrl && (config.supabaseServiceKey || config.supabaseAnonKey));
+  Boolean(config.supabaseUrl && config.supabaseServiceKey);
+
+const requiredProductionVariables = [
+  "ANTHROPIC_API_KEY",
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+] as const;
+
+/** Safe, value-free diagnostics for deployment verification. */
+export function productionEnvironmentStatus() {
+  const missing = requiredProductionVariables.filter((name) => !process.env[name]);
+
+  return {
+    ready: missing.length === 0,
+    missing,
+  };
+}
 
 /** Which mode the app is actually running in — surfaced in the UI. */
 export function runtimeMode(): {
