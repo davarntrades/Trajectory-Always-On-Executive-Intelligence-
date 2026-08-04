@@ -14,9 +14,19 @@
 export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   openaiApiKey: process.env.OPENAI_API_KEY,
+  geminiApiKey: process.env.GEMINI_API_KEY,
+  xaiApiKey: process.env.XAI_API_KEY,
+  localProviderBaseUrl: process.env.LOCAL_PROVIDER_BASE_URL,
+  localProviderApiKey: process.env.LOCAL_PROVIDER_API_KEY,
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  supabasePublishableKey:
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  authEnabled: process.env.TRAJECTORY_AUTH_ENABLED === "true",
+  appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  connectorEncryptionKey: process.env.CONNECTOR_ENCRYPTION_KEY,
+  cronSecret: process.env.CRON_SECRET,
 
   /** Single-operator build. Multi-tenant arrives with real auth in Phase 2. */
   ownerId: process.env.TRAJECTORY_OWNER_ID ?? "00000000-0000-0000-0000-000000000001",
@@ -25,29 +35,57 @@ export const config = {
 
   anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.1",
-  defaultProvider:
-    process.env.TRAJECTORY_DEFAULT_PROVIDER === "openai" ||
-    process.env.TRAJECTORY_DEFAULT_PROVIDER === "anthropic"
-      ? process.env.TRAJECTORY_DEFAULT_PROVIDER
-      : "auto",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-3.5-flash",
+  grokModel: process.env.GROK_MODEL ?? "grok-4.20-non-reasoning-latest",
+  localModel: process.env.LOCAL_PROVIDER_MODEL ?? "gpt-oss:20b",
+  defaultProvider: ["anthropic", "openai", "gemini", "grok", "local"].includes(
+    process.env.TRAJECTORY_DEFAULT_PROVIDER ?? "",
+  )
+    ? process.env.TRAJECTORY_DEFAULT_PROVIDER as
+        | "anthropic"
+        | "openai"
+        | "gemini"
+        | "grok"
+        | "local"
+    : "auto",
 } as const;
 
 export const hasClaude = () => Boolean(config.anthropicApiKey);
 export const hasOpenAI = () => Boolean(config.openaiApiKey);
+export const hasGemini = () => Boolean(config.geminiApiKey);
+export const hasGrok = () => Boolean(config.xaiApiKey);
+export const hasLocalProvider = () => Boolean(config.localProviderBaseUrl);
 
 export const hasSupabase = () =>
+  Boolean(config.supabaseUrl && config.supabasePublishableKey);
+
+export const hasSupabaseAdmin = () =>
   Boolean(config.supabaseUrl && config.supabaseServiceKey);
 
 const requiredProductionVariables = [
-  "ANTHROPIC_API_KEY",
   "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
 ] as const;
 
 /** Safe, value-free diagnostics for deployment verification. */
 export function productionEnvironmentStatus() {
-  const missing = requiredProductionVariables.filter((name) => !process.env[name]);
+  const missing: string[] = requiredProductionVariables.filter((name) => {
+    if (name === "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") {
+      return !config.supabasePublishableKey;
+    }
+    return !process.env[name];
+  });
+
+  if (!hasClaude() && !hasOpenAI() && !hasGemini() && !hasGrok() && !hasLocalProvider()) {
+    missing.push("ONE_PROVIDER_API_KEY");
+  }
+
+  if (config.authEnabled) {
+    if (!config.connectorEncryptionKey) missing.push("CONNECTOR_ENCRYPTION_KEY");
+    if (!config.cronSecret) missing.push("CRON_SECRET");
+    if (!process.env.NEXT_PUBLIC_APP_URL) missing.push("NEXT_PUBLIC_APP_URL");
+  }
 
   return {
     ready: missing.length === 0,
@@ -58,10 +96,22 @@ export function productionEnvironmentStatus() {
 /** Which mode the app is actually running in — surfaced in the UI. */
 export function runtimeMode(): {
   store: "supabase" | "seed";
-  reasoning: "anthropic" | "openai" | "deterministic";
+  reasoning: "anthropic" | "openai" | "gemini" | "grok" | "local" | "deterministic";
+  auth: "enabled" | "disabled";
 } {
   return {
     store: hasSupabase() ? "supabase" : "seed",
-    reasoning: hasClaude() ? "anthropic" : hasOpenAI() ? "openai" : "deterministic",
+    reasoning: hasClaude()
+      ? "anthropic"
+      : hasOpenAI()
+        ? "openai"
+        : hasGemini()
+          ? "gemini"
+          : hasGrok()
+            ? "grok"
+            : hasLocalProvider()
+              ? "local"
+              : "deterministic",
+    auth: config.authEnabled ? "enabled" : "disabled",
   };
 }

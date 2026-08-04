@@ -3,6 +3,34 @@
 > Trajectory is state-first, not chat-first. There is one executive state.
 > Voice, chat, dashboard and mobile notifications are interfaces to it.
 
+## SaaS foundation decision — 2026-08-04
+
+Identity is Supabase Auth and every workspace row carries the authenticated user
+id. Browser requests use a fresh cookie-bound Supabase client; Row Level Security
+compares ownership with `auth.uid()`. Service-role clients exist only in server
+modules for scheduled work and encrypted connector credentials, with an explicit
+authorised user-id filter on every operation.
+
+The existing orb remains the primary projection. `/dashboard` is a separate,
+authenticated archive and configuration projection; it does not replace or
+restructure the orb experience.
+
+Model calls cross `IntelligenceProvider`, never an SDK-specific application
+boundary. Auto routing considers required capability, availability, latency and
+cost. Claude, OpenAI, Gemini, Grok and local OpenAI-compatible endpoints implement
+the same structured narrative contract, and their keys remain server-only.
+
+Connectors cross an OAuth account boundary shared by Google Calendar, Gmail,
+Outlook, Notion, GitHub and Slack. OAuth state is hashed, short-lived and
+single-use; PKCE is enabled where supported. Credential JSON is AES-256-GCM
+encrypted before persistence. The common lifecycle owns connection, permissions,
+health, sync history and disconnection; vendor pull/normalisation modules plug
+into that lifecycle without changing application routes.
+
+The executive loop hashes user-owned events, tasks, goals and opportunities.
+An unchanged hash creates no new provider call. Changed state creates a snapshot,
+trajectory-history row, daily brief and Executive Signal from one computation.
+
 This document specifies the persistent state engine. `ROADMAP.md` covers delivery
 phases; this covers the thing being delivered.
 

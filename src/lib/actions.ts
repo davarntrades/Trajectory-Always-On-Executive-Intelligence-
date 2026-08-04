@@ -20,7 +20,7 @@ export interface ProposeInput {
 }
 
 export async function propose(input: ProposeInput): Promise<TrajectoryAction> {
-  const store = getStore();
+  const store = await getStore();
   const decision = evaluate({
     connectorId: input.connectorId,
     capability: input.capability,
@@ -75,7 +75,7 @@ export async function decide(
   actor = "davarn",
   note?: string,
 ): Promise<TrajectoryAction | null> {
-  const store = getStore();
+  const store = await getStore();
   const action = (await store.actions()).find((a) => a.id === actionId);
   if (!action) return null;
 
@@ -101,7 +101,7 @@ export async function decide(
  * dispatch goes here — the audit contract around it does not change.
  */
 export async function execute(actionId: string): Promise<TrajectoryAction | null> {
-  const store = getStore();
+  const store = await getStore();
   const action = (await store.actions()).find((a) => a.id === actionId);
   if (!action) return null;
 

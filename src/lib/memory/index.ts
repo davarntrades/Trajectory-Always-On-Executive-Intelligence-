@@ -10,7 +10,7 @@
  * runs on keyword + graph signals — degraded, not broken.
  */
 
-import { getStore } from "@/lib/store";
+import { getStore, type TrajectoryStore } from "@/lib/store";
 import type { Entity, Memory } from "@/lib/types";
 
 export interface EmbeddingProvider {
@@ -112,6 +112,7 @@ export interface RetrieveOptions {
   limit?: number;
   /** Bias retrieval toward these entities regardless of query text. */
   entityIds?: string[];
+  store?: TrajectoryStore;
 }
 
 /**
@@ -126,7 +127,7 @@ export async function retrieveMemory(
   options: RetrieveOptions = {},
 ): Promise<RetrievedMemory[]> {
   const { limit = 10, entityIds = [] } = options;
-  const store = getStore();
+  const store = options.store ?? await getStore();
   const [memories, entities] = await Promise.all([
     store.memories(),
     store.entities(),
@@ -192,15 +193,16 @@ export async function retrieveMemory(
 export async function alreadyKnows(
   question: string,
   threshold = 0.35,
+  store?: TrajectoryStore,
 ): Promise<RetrievedMemory | null> {
-  const hits = await retrieveMemory(question, { limit: 3 });
+  const hits = await retrieveMemory(question, { limit: 3, store });
   const best = hits[0];
   return best && best.score >= threshold && best.confidence >= 0.7 ? best : null;
 }
 
 /** Memories that should be in context for any state computation. */
-export async function standingContext(limit = 8): Promise<Memory[]> {
-  const memories = await getStore().memories();
+export async function standingContext(limit = 8, store?: TrajectoryStore): Promise<Memory[]> {
+  const memories = await (store ?? await getStore()).memories();
   return memories
     .filter((m) => m.kind === "preference" || m.kind === "mistake" || m.kind === "decision")
     .sort((a, b) => recencyDecayedSalience(b) - recencyDecayedSalience(a))

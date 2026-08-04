@@ -28,7 +28,7 @@ export interface SyncReport {
 
 export async function runSync(options: { recompute?: boolean } = {}): Promise<SyncReport> {
   const { recompute = true } = options;
-  const store = getStore();
+  const store = await getStore();
   const connectors = configuredConnectors();
 
   const report: SyncReport = {

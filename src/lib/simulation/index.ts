@@ -8,7 +8,7 @@
  */
 
 import { runEngine } from "@/lib/state/engine";
-import { getStore } from "@/lib/store";
+import { getStore, type TrajectoryStore } from "@/lib/store";
 import type { Entity, Opportunity, ScoredCandidate } from "@/lib/types";
 import type { Intervention } from "./model";
 import { simulate, type SimulationOptions, type SimulationReport } from "./run";
@@ -77,13 +77,14 @@ function toIntervention(
 export interface RunSimulationOptions extends SimulationOptions {
   /** How many top-ranked candidates to price. */
   topK?: number;
+  store?: TrajectoryStore;
 }
 
 export async function runSimulation(
   options: RunSimulationOptions = {},
 ): Promise<SimulationReport> {
-  const { topK = 4, ...simOptions } = options;
-  const store = getStore();
+  const { topK = 4, store: suppliedStore, ...simOptions } = options;
+  const store = suppliedStore ?? await getStore();
 
   const [projects, tasks, opportunities, events, entities, goals] =
     await Promise.all([

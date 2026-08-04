@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /** Notification history — what Trajectory has said, and when. */
 export async function GET() {
-  const notifications = await getStore().notifications(50);
+  const notifications = await (await getStore()).notifications(50);
   return NextResponse.json({ notifications });
 }
 

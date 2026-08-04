@@ -76,7 +76,7 @@ function cadenceDue(
 export async function runLoop(options: LoopOptions = {}): Promise<LoopResult> {
   const started = Date.now();
   const { observe = true, alwaysNotify = false } = options;
-  const store = getStore();
+  const store = await getStore();
 
   // 1. Observe -------------------------------------------------------------
   let observed = 0;

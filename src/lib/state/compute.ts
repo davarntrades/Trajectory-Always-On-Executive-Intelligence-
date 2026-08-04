@@ -11,7 +11,7 @@ import { retrieveMemory, standingContext } from "@/lib/memory";
 import type { ProviderPreference } from "@/lib/providers";
 import { runEngine } from "@/lib/state/engine";
 import { synthesise } from "@/lib/state/reasoner";
-import { getStore } from "@/lib/store";
+import { getStore, type TrajectoryStore } from "@/lib/store";
 import type { Memory, Outlook, TrajectoryState } from "@/lib/types";
 
 export interface ComputeOptions {
@@ -32,13 +32,18 @@ export interface ComputeOptions {
   provider?: ProviderPreference;
   /** Optional spoken or typed input used to shape the provider's explanation. */
   userInput?: string;
+  /** Recent authenticated conversation turns supplied by the workspace layer. */
+  conversationContext?: string;
+  /** Explicit owner-scoped store for cookie-less background work. */
+  store?: TrajectoryStore;
+  ownerName?: string;
 }
 
 export async function computeState(
   options: ComputeOptions = {},
 ): Promise<TrajectoryState> {
   const { persist = true } = options;
-  const store = getStore();
+  const store = options.store ?? await getStore();
 
   const [projects, tasks, opportunities, events, entities] = await Promise.all([
     store.projects(),
@@ -58,8 +63,8 @@ export async function computeState(
     .join(" ");
 
   const [retrieved, standing] = await Promise.all([
-    retrieveMemory(query, { limit: 6 }),
-    standingContext(5),
+    retrieveMemory(query, { limit: 6, store }),
+    standingContext(5, store),
   ]);
 
   const memories: Memory[] = dedupeById([...standing, ...retrieved]);
@@ -69,6 +74,8 @@ export async function computeState(
     : await synthesise(engine, memories, {
         provider: options.provider,
         userInput: options.userInput,
+        conversationContext: options.conversationContext,
+        ownerName: options.ownerName,
       });
 
   const resolved = narrative ?? {
@@ -80,7 +87,7 @@ export async function computeState(
 
   const outlook = options.simulate === false
     ? undefined
-    : await buildOutlook(engine.signals.candidates[0]?.id, options.trajectories);
+    : await buildOutlook(engine.signals.candidates[0]?.id, options.trajectories, store);
 
   const state: TrajectoryState = {
     computedAt: new Date().toISOString(),
@@ -128,10 +135,11 @@ function dedupeById(memories: Memory[]): Memory[] {
 async function buildOutlook(
   topCandidateId: string | undefined,
   trajectories = 400,
+  store?: TrajectoryStore,
 ): Promise<Outlook | undefined> {
   try {
     const { runSimulation } = await import("@/lib/simulation");
-    const report = await runSimulation({ trajectories, horizonDays: 28, topK: 5 });
+    const report = await runSimulation({ trajectories, horizonDays: 28, topK: 5, store });
 
     // Match the simulated arm to the engine's chosen action where possible, so
     // the headline number describes the action actually being recommended.

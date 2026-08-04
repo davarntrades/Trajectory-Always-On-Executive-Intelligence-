@@ -7,7 +7,11 @@
  * does not know or care which backend answered.
  */
 
-import { config, hasSupabase } from "@/lib/config";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { config, hasSupabase, hasSupabaseAdmin } from "@/lib/config";
+import { requireUser } from "@/lib/auth/session";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient as createRequestClient } from "@/lib/supabase/server";
 import type {
   AuditEntry,
   CalendarEntry,
@@ -178,27 +182,13 @@ class SeedStore implements TrajectoryStore {
 type Row = Record<string, unknown>;
 
 class SupabaseStore implements TrajectoryStore {
-  // Lazily constructed so the module never imports a client that can't be built.
-  private clientPromise: Promise<
-    import("@supabase/supabase-js").SupabaseClient
-  > | null = null;
-
-  private client() {
-    if (!this.clientPromise) {
-      this.clientPromise = import("@supabase/supabase-js").then(({ createClient }) =>
-        createClient(
-          config.supabaseUrl!,
-          config.supabaseServiceKey ?? config.supabaseAnonKey!,
-          { auth: { persistSession: false } },
-        ),
-      );
-    }
-    return this.clientPromise;
-  }
+  constructor(
+    private readonly client: SupabaseClient,
+    private readonly ownerId: string,
+  ) {}
 
   private async select(table: string, build?: (q: never) => unknown): Promise<Row[]> {
-    const sb = await this.client();
-    let q = sb.from(table).select("*").eq("owner_id", config.ownerId);
+    let q = this.client.from(table).select("*").eq("owner_id", this.ownerId);
     if (build) q = build(q as never) as typeof q;
     const { data, error } = await q;
     if (error) throw new Error(`${table}: ${error.message}`);
@@ -239,11 +229,10 @@ class SupabaseStore implements TrajectoryStore {
   }
   async events(sinceDays = 30) {
     const cutoff = new Date(Date.now() - sinceDays * 864e5).toISOString();
-    const sb = await this.client();
-    const { data, error } = await sb
+    const { data, error } = await this.client
       .from("events")
       .select("*")
-      .eq("owner_id", config.ownerId)
+      .eq("owner_id", this.ownerId)
       .gte("occurred_at", cutoff)
       .order("occurred_at", { ascending: false });
     if (error) throw new Error(`events: ${error.message}`);
@@ -270,12 +259,11 @@ class SupabaseStore implements TrajectoryStore {
 
   async appendEvents(events: TrajectoryEvent[]) {
     if (!events.length) return 0;
-    const sb = await this.client();
-    const { data, error } = await sb
+    const { data, error } = await this.client
       .from("events")
       .upsert(
         events.map((e) => ({
-          owner_id: config.ownerId,
+          owner_id: this.ownerId,
           source: e.source,
           type: e.type,
           title: e.title,
@@ -286,7 +274,7 @@ class SupabaseStore implements TrajectoryStore {
           external_id: e.externalId ?? null,
           payload: e.payload,
         })),
-        { onConflict: "source,external_id", ignoreDuplicates: true },
+        { onConflict: "owner_id,source,external_id", ignoreDuplicates: true },
       )
       .select("id");
     if (error) throw new Error(`appendEvents: ${error.message}`);
@@ -294,9 +282,8 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async saveSnapshot(state: TrajectoryState) {
-    const sb = await this.client();
-    const { error } = await sb.from("state_snapshots").insert({
-      owner_id: config.ownerId,
+    const { error } = await this.client.from("state_snapshots").insert({
+      owner_id: this.ownerId,
       computed_at: state.computedAt,
       trajectory: state.trajectory,
       risk_level: state.riskLevel,
@@ -312,11 +299,10 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async latestSnapshot() {
-    const sb = await this.client();
-    const { data, error } = await sb
+    const { data, error } = await this.client
       .from("state_snapshots")
       .select("*")
-      .eq("owner_id", config.ownerId)
+      .eq("owner_id", this.ownerId)
       .order("computed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -337,11 +323,10 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async notifications(limit = 50) {
-    const sb = await this.client();
-    const { data, error } = await sb
+    const { data, error } = await this.client
       .from("notifications")
       .select("*")
-      .eq("owner_id", config.ownerId)
+      .eq("owner_id", this.ownerId)
       .order("at", { ascending: false })
       .limit(limit);
     if (error) throw new Error(`notifications: ${error.message}`);
@@ -360,10 +345,9 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async appendNotification(n: StoredNotification) {
-    const sb = await this.client();
-    const { error } = await sb.from("notifications").insert({
+    const { error } = await this.client.from("notifications").insert({
       id: n.id,
-      owner_id: config.ownerId,
+      owner_id: this.ownerId,
       at: n.at,
       channel: n.channel,
       cadence: n.cadence ?? null,
@@ -393,10 +377,9 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async saveAction(action: TrajectoryAction) {
-    const sb = await this.client();
-    const { error } = await sb.from("actions").upsert({
+    const { error } = await this.client.from("actions").upsert({
       id: action.id,
-      owner_id: config.ownerId,
+      owner_id: this.ownerId,
       connector_id: action.connectorId ?? null,
       capability: action.capability,
       tier: action.tier,
@@ -410,11 +393,10 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async auditLog(limit = 100) {
-    const sb = await this.client();
-    const { data, error } = await sb
+    const { data, error } = await this.client
       .from("audit_log")
       .select("*")
-      .eq("owner_id", config.ownerId)
+      .eq("owner_id", this.ownerId)
       .order("at", { ascending: false })
       .limit(limit);
     if (error) throw new Error(`auditLog: ${error.message}`);
@@ -430,9 +412,8 @@ class SupabaseStore implements TrajectoryStore {
   }
 
   async appendAudit(entry: Omit<AuditEntry, "id">) {
-    const sb = await this.client();
-    const { error } = await sb.from("audit_log").insert({
-      owner_id: config.ownerId,
+    const { error } = await this.client.from("audit_log").insert({
+      owner_id: this.ownerId,
       action_id: entry.actionId ?? null,
       at: entry.at,
       actor: entry.actor,
@@ -521,11 +502,27 @@ function mapMemory(m: Row): Memory {
 
 // ---------------------------------------------------------------------------
 
-let instance: TrajectoryStore | null = null;
+const seedStore = new SeedStore();
 
-export function getStore(): TrajectoryStore {
-  if (!instance) {
-    instance = hasSupabase() ? new SupabaseStore() : new SeedStore();
+/** Resolve a fresh request-scoped, RLS-enforced store for the signed-in user. */
+export async function getStore(): Promise<TrajectoryStore> {
+  if (!hasSupabase()) return seedStore;
+
+  if (config.authEnabled) {
+    const [user, client] = await Promise.all([requireUser(), createRequestClient()]);
+    return new SupabaseStore(client, user.id);
   }
-  return instance;
+
+  // Backward-compatible rollout mode. This keeps the deployed single-user
+  // experience operating until the SaaS migration and auth providers are live.
+  return hasSupabaseAdmin()
+    ? new SupabaseStore(createAdminClient(), config.ownerId)
+    : seedStore;
+}
+
+/** Background jobs have no browser cookie; service role + explicit owner only. */
+export function getStoreForUser(ownerId: string): TrajectoryStore {
+  if (!hasSupabaseAdmin()) return seedStore;
+  if (!ownerId) throw new Error("owner id is required");
+  return new SupabaseStore(createAdminClient(), ownerId);
 }

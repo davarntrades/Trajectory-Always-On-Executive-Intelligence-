@@ -11,6 +11,9 @@ export const openAIProvider: IntelligenceProvider = {
   id: "openai",
   label: "OpenAI",
   model: config.openaiModel,
+  capabilities: ["executive_reasoning", "fast_response", "structured_output"],
+  latency: "medium",
+  cost: "medium",
   isConfigured: () => Boolean(config.openaiApiKey),
   async generate(request: ProviderRequest) {
     const client = new OpenAI({ apiKey: config.openaiApiKey });

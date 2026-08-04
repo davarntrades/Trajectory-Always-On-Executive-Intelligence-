@@ -25,7 +25,7 @@ type VoiceStatus = "idle" | "thinking" | "speaking" | "listening" | "unsupported
 interface BriefResponse {
   speech: string;
   lines: string[];
-  provider: "anthropic" | "openai" | "deterministic";
+  provider: "anthropic" | "openai" | "gemini" | "grok" | "local" | "deterministic";
   model: string | null;
 }
 
@@ -111,6 +111,11 @@ export function TrajectoryExperience({
 
   const chooseProvider = useCallback((next: ProviderPreference) => {
     setProvider(next);
+    void fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: next }),
+    }).catch(() => undefined);
   }, []);
 
   const resetOrbLevel = useCallback(() => {
