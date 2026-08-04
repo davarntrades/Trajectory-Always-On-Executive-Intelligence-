@@ -24,6 +24,8 @@ production/default branch. The dedicated `trajectory-prod` Supabase project is
 healthy, all four production migrations are applied, and a complete Supabase
 environment now activates authenticated workspaces automatically. External
 Google, Apple and connector OAuth applications remain separately configurable.
+The production deployment for PR #4 is Ready on Vercel; Vercel Deployment
+Protection currently requires a Vercel session before requests reach the app.
 
 ### Authentication
 
@@ -160,8 +162,11 @@ entries must not be removed.
   path; resolved all Supabase security-advisor findings.
 - **Verification status:** Migration history confirmed on `trajectory-prod`;
   transactional two-user RLS test passed and rolled back cleanly; security
-  advisor returned zero findings; ESLint, strict TypeScript and Next.js
-  production build passed.
+  advisor returned zero findings; two temporary users obtained password
+  sessions, persisted a conversation/message through the Data API and saved an
+  OpenAI provider preference; temporary records cascade-deleted cleanly; ESLint,
+  strict TypeScript and Next.js production build passed; Vercel production
+  deployment reached Ready.
 
 ## Current Architecture
 
@@ -197,8 +202,13 @@ entries must not be removed.
 
 - **Complete a real mailbox-backed authentication acceptance test.** Verify
   signup, email confirmation, session persistence, password reset and sign-out
-  with a controlled production test address. Expected outcome: operational
-  evidence for the external email-delivery portion of the Auth flow.
+  with a controlled production test address after configuring production SMTP
+  and suitable email rate limits. Expected outcome: operational evidence for
+  the external email-delivery portion of the Auth flow.
+- **Decide the production access policy.** Vercel Deployment Protection
+  currently intercepts all production routes. Expected outcome: either retain
+  Vercel-authenticated private testing deliberately or expose Trajectory's own
+  Supabase login to approved testers.
 
 ### High
 
@@ -245,8 +255,10 @@ entries must not be removed.
 - Google OAuth requires client credentials and redirect configuration.
 - Apple Sign In requires Apple Developer configuration and verified domains.
 - Live connector testing requires vendor OAuth applications and test accounts.
-- Mailbox-backed email verification and password-reset acceptance still require
-  a controlled production test address.
+- Supabase's current default email rate limit blocked live signup acceptance;
+  production SMTP and suitable Auth email limits are not yet verified.
+- Vercel Deployment Protection currently prevents unauthenticated devices from
+  reaching Trajectory's health or login routes.
 - Physical Safari and Chrome authentication testing remains outstanding.
 
 ## Changelog
@@ -302,6 +314,22 @@ Changelog entries are append-only.
 - **Follow-up:** Complete mailbox-backed Auth acceptance, configure Google and
   Apple sign-in, then begin the first vendor connector ingestion adapter.
 
+### 5 August 2026 — Production authentication acceptance follow-through
+
+- **What changed:** Merged PR #4 and exercised Supabase Auth password sessions,
+  Data API persistence and provider settings with two temporary production
+  identities; all temporary rows and identities were removed afterward.
+- **Why:** Verify that the deployed architecture works across Auth, JWT-backed
+  RLS, persistent memory and user settings rather than stopping at schema
+  inspection.
+- **Verification performed:** Both password sessions succeeded; one user wrote
+  a conversation and message; the second user could not observe the first
+  user's records; the OpenAI preference persisted; Vercel's merge deployment
+  reported Ready. Direct application route checks were intercepted by Vercel
+  Deployment Protection.
+- **Follow-up:** Configure production SMTP/rate limits and decide whether
+  Vercel-authenticated private access should remain in front of Supabase Auth.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -326,11 +354,11 @@ Changelog entries are append-only.
 
 ## Next Recommended Milestone
 
-**Complete production Auth acceptance and activate the first live connector.**
+**Open the production Auth acceptance path.**
 
-Use a controlled mailbox to verify email confirmation, password recovery and
-session persistence on mobile and desktop; configure Google and Apple sign-in;
-then implement Google Calendar ingestion through the existing connector
-contract. This is the highest-impact next step because the database boundary and
-tenant isolation are now proven, leaving external identity and real observation
-data as the next constraints on private multi-user testing.
+Decide the Vercel Deployment Protection policy, configure production SMTP and
+safe email rate limits, then use a controlled mailbox to verify signup, email
+confirmation, password recovery and session persistence on mobile and desktop.
+This is the highest-impact next step because password Auth, RLS and persistence
+are proven, while platform access and transactional email are the remaining
+constraints on real-user acceptance testing.
