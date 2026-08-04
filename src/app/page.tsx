@@ -5,11 +5,22 @@ import {
 import { config } from "@/lib/config";
 import { providerOptions } from "@/lib/providers";
 import { computeState } from "@/lib/state/compute";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const state = await computeState({ persist: true });
+  const user = await getCurrentUser();
+  const providers = providerOptions();
+  const preferredProvider = user?.provider && user.provider !== "auto"
+    && !providers.find((provider) => provider.id === user.provider)?.configured
+    ? "auto"
+    : user?.provider;
+  const state = await computeState({
+    persist: true,
+    provider: preferredProvider,
+    ownerName: user?.displayName,
+  });
   const experienceState: ExperienceState = {
     computedAt: state.computedAt,
     trajectory: state.trajectory,
@@ -34,10 +45,10 @@ export default async function Home() {
 
   return (
     <TrajectoryExperience
-      ownerName={config.ownerName}
+      ownerName={user?.displayName ?? config.ownerName}
       state={experienceState}
-      providers={providerOptions()}
-      defaultProvider={state.provider ?? config.defaultProvider}
+      providers={providers}
+      defaultProvider={preferredProvider ?? state.provider ?? config.defaultProvider}
     />
   );
 }

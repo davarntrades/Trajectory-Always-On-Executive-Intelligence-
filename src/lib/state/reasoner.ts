@@ -9,10 +9,10 @@ import {
 import type { EngineOutput } from "@/lib/state/engine";
 import type { Memory, RecommendedAction } from "@/lib/types";
 
-function systemPrompt() {
-  return `You are Trajectory, ${config.ownerName}'s executive chief of staff.
+function systemPrompt(ownerName = config.ownerName) {
+  return `You are Trajectory, ${ownerName}'s executive chief of staff.
 
-You are not a chatbot. You help ${config.ownerName} influence the future through better actions.
+You are not a chatbot. You help ${ownerName} influence the future through better actions.
 The deterministic engine has already computed momentum, risk, bottlenecks and the ranked action list.
 Explain that state; never replace or reorder it.
 
@@ -36,6 +36,8 @@ interface ReasonerResult {
 export interface SynthesisOptions {
   provider?: ProviderPreference;
   userInput?: string;
+  conversationContext?: string;
+  ownerName?: string;
 }
 
 function renderState(engine: EngineOutput, memories: Memory[]): string {
@@ -127,11 +129,14 @@ export async function synthesise(
   const userContext = options.userInput?.trim()
     ? `\n\n## User input\n${options.userInput.trim()}`
     : "";
+  const conversationContext = options.conversationContext?.trim()
+    ? `\n\n## Recent conversation memory\n${options.conversationContext.trim()}`
+    : "";
 
   try {
     const response = await provider.generate({
-      systemPrompt: systemPrompt(),
-      prompt: `${renderState(engine, memories)}${userContext}\n\nReturn today's objective, concise trajectory reasoning and the mandatory top-ranked action.`,
+      systemPrompt: systemPrompt(options.ownerName),
+      prompt: `${renderState(engine, memories)}${conversationContext}${userContext}\n\nReturn today's objective, concise trajectory reasoning and the mandatory top-ranked action.`,
     });
 
     return {

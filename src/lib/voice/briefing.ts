@@ -67,8 +67,11 @@ export interface Briefing {
  * recommendation without a why is an instruction, and Trajectory does not give
  * instructions.
  */
-export async function buildBriefing(state: TrajectoryState): Promise<Briefing> {
-  const store = getStore();
+export async function buildBriefing(
+  state: TrajectoryState,
+  ownerName = config.ownerName,
+): Promise<Briefing> {
+  const store = await getStore();
   const [calendar, entities, events] = await Promise.all([
     store.calendar(),
     store.entities(),
@@ -77,7 +80,7 @@ export async function buildBriefing(state: TrajectoryState): Promise<Briefing> {
 
   const lines: string[] = [];
 
-  lines.push(`${greeting()} ${config.ownerName}.`);
+  lines.push(`${greeting()} ${ownerName}.`);
 
   const meetings = describeMeetings(calendar);
   if (meetings) lines.push(meetings);

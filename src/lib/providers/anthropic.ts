@@ -29,6 +29,9 @@ export const anthropicProvider: IntelligenceProvider = {
   id: "anthropic",
   label: "Claude",
   model: config.anthropicModel,
+  capabilities: ["executive_reasoning", "long_context", "structured_output"],
+  latency: "high",
+  cost: "high",
   isConfigured: () => Boolean(config.anthropicApiKey),
   async generate(request: ProviderRequest) {
     const client = new Anthropic({ apiKey: config.anthropicApiKey });

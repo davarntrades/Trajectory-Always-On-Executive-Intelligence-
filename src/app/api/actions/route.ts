@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { decide, execute, propose } from "@/lib/actions";
 import { getStore } from "@/lib/store";
+import { requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ const Execute = z.object({
 const Body = z.discriminatedUnion("op", [Propose, Decide, Execute]);
 
 export async function GET() {
-  const store = getStore();
+  const store = await getStore();
   const [actions, audit] = await Promise.all([store.actions(), store.auditLog(50)]);
   return NextResponse.json({ actions, audit });
 }
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ action });
     }
     case "decide": {
-      const action = await decide(body.actionId, body.outcome, "davarn", body.note);
+      const user = await requireUser();
+      const action = await decide(body.actionId, body.outcome, user.id, body.note);
       if (!action) return NextResponse.json({ error: "action not found" }, { status: 404 });
       return NextResponse.json({ action });
     }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@google/genai": "2.15.0",
+    "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "^2.112.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { ProviderUnavailableError, providerPreferences } from "@/lib/providers";
 import { computeState } from "@/lib/state/compute";
 import { buildBriefing } from "@/lib/voice/briefing";
+import { getCurrentUser } from "@/lib/auth/session";
+import { getWorkspaceRepository } from "@/lib/workspace/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -18,17 +20,71 @@ const RequestBody = z.object({
 });
 
 async function createBriefing(input?: z.infer<typeof RequestBody>) {
+  const startedAt = Date.now();
   try {
+    const [user, repository] = await Promise.all([
+      getCurrentUser(),
+      getWorkspaceRepository(),
+    ]);
+    const settings = await repository.getSettings();
+    const recentMessages = input ? await repository.recentMessages(16) : [];
+    const provider = input?.provider ?? settings.provider;
+    const conversation = input
+      ? await repository.createConversation(input.transcript.slice(0, 72), provider === "auto" ? undefined : provider)
+      : undefined;
+    if (input && conversation) {
+      await repository.appendMessage({
+        conversationId: conversation.id,
+        role: "user",
+        content: input.transcript,
+        metadata: { channel: "voice" },
+      });
+    }
     const state = await computeState({
-      persist: false,
-      provider: input?.provider,
+      persist: true,
+      provider,
       userInput: input?.transcript,
+      conversationContext: recentMessages
+        .map((message) => `${message.role}: ${message.content}`)
+        .join("\n")
+        .slice(-8_000),
+      ownerName: user?.displayName,
     });
-    const briefing = await buildBriefing(state);
+    const briefing = await buildBriefing(state, user?.displayName);
+    if (input && conversation) {
+      await repository.appendMessage({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: briefing.speech,
+        provider: state.provider,
+        model: state.model,
+        metadata: { channel: "voice", trajectory: state.trajectory },
+      });
+      await Promise.all([
+        repository.recordVoice({
+          conversationId: conversation.id,
+          transcript: input.transcript,
+          responseText: briefing.speech,
+          provider: state.provider,
+          model: state.model,
+          durationMs: Date.now() - startedAt,
+          status: "completed",
+        }),
+        repository.recordTrajectory(state),
+        ...(state.provider && state.model ? [repository.recordProviderUsage({
+          provider: state.provider,
+          model: state.model,
+          taskType: "voice-brief",
+          latencyMs: Date.now() - startedAt,
+          success: true,
+        })] : []),
+      ]);
+    }
     return NextResponse.json({
       ...briefing,
       provider: state.provider ?? "deterministic",
       model: state.model ?? null,
+      conversationId: conversation?.id ?? null,
     });
   } catch (err) {
     if (err instanceof ProviderUnavailableError) {
@@ -37,6 +93,7 @@ async function createBriefing(input?: z.infer<typeof RequestBody>) {
         { status: 503 },
       );
     }
+    console.error("voice briefing failed", err);
     return NextResponse.json(
       { error: "briefing failed" },
       { status: 500 },

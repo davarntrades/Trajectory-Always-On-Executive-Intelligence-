@@ -7,6 +7,8 @@ authorised — acts. It maintains one computed state of what is moving, what is
 stuck, and what the highest-leverage next action is, and it explains why.
 
 See [`ROADMAP.md`](./ROADMAP.md) for the architecture and the full phase plan.
+Current product progress, completed milestones, blockers and the next recommended
+milestone are maintained in [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md).
 
 ---
 
@@ -21,9 +23,9 @@ Trajectory splits reasoning in two:
 | Layer | Owner | Responsibility |
 |---|---|---|
 | **State engine** | TypeScript, pure functions | Computes momentum, bottleneck, leverage, risk from data with explicit formulas |
-| **Reasoner** | Claude (`claude-opus-5`) | Explains the computed state — it never decides it |
+| **Reasoner** | Provider adapter | Explains the computed state — it never decides it |
 
-Claude receives a **ranked, scored candidate set** and explains the top one. It
+The selected provider receives a **ranked, scored candidate set** and explains the top one. It
 never invents "your bottleneck is X". So a recommendation is reproducible, and
 "why did you say that?" is answerable from the record — every state snapshot
 stores the signals that produced it.
@@ -50,21 +52,22 @@ Copy `.env.example` to `.env.local` to unlock more:
 | `ANTHROPIC_API_KEY` | Claude-written narrative and reasoning instead of the deterministic fallback |
 | `OPENAI_API_KEY` | Enables OpenAI as a selectable server-side reasoning provider |
 | `VOYAGE_API_KEY` | Semantic memory retrieval (the Claude API has no embeddings endpoint) |
-| Supabase vars | Persistent memory, event log and audit trail across restarts |
-| Connector tokens | Live data instead of seed (Phase 2) |
+| Supabase vars | Per-user persistent memory, conversations and audit history |
+| `TRAJECTORY_AUTH_ENABLED=true` | Supabase Auth and protected user workspaces after migrations are applied |
+| Connector OAuth variables | Per-user connect/disconnect, health and sync lifecycle |
 
 The interface footer shows which mode you are in.
 
 ### Intelligence providers
 
-Trajectory's state engine remains deterministic and provider-independent. Claude
-and OpenAI are adapters used only to explain the already-ranked state and answer
+Trajectory's state engine remains deterministic and provider-independent. Claude,
+OpenAI, Gemini, Grok and local OpenAI-compatible models are adapters used only to explain the already-ranked state and answer
 spoken input through that state. The provider can be selected from the compact
 control in the application header for the current session.
 
 Provider credentials are read only in server modules and are never returned by
 the provider metadata or briefing APIs. Configure `ANTHROPIC_API_KEY` and/or
-`OPENAI_API_KEY` in Vercel. Optional `ANTHROPIC_MODEL`, `OPENAI_MODEL` and
+`OPENAI_API_KEY`, `GEMINI_API_KEY` and/or `XAI_API_KEY` in Vercel. Optional model variables and
 `TRAJECTORY_DEFAULT_PROVIDER` variables override the defaults.
 
 `GET /api/providers` returns safe availability/model metadata. A spoken request
@@ -98,7 +101,18 @@ but a production deployment needs all four variables marked **Required** in
 | `GET /api/voice/brief` | The spoken briefing |
 | `GET /api/health` | Value-free deployment and environment readiness diagnostics |
 | `GET /api/providers` | Safe provider availability and model metadata |
-| `POST /api/voice/brief` | Generate a provider-backed response from recognised speech |
+| `POST /api/voice/brief` | Generate and persist a provider-backed voice interaction |
+| `GET/POST /api/conversations` | Load or create user-owned conversations |
+| `GET/POST /api/conversations/:id/messages` | Load or append isolated conversation messages |
+| `GET/POST/PATCH /api/goals` | Read and update goals |
+| `GET /api/briefs` | Read the authenticated user’s brief archive |
+| `GET /api/trajectory/history` | Read historical trajectory changes |
+| `GET/PATCH /api/settings` | Read or update provider and workspace settings |
+| `GET /api/connectors` | Safe connector status; never returns credentials |
+| `GET /api/connectors/:id/connect` | Begin a user-bound OAuth flow |
+| `DELETE /api/connectors/:id` | Disconnect and erase stored credentials |
+| `POST /api/connectors/:id/sync` | Run connector credential/health synchronization |
+| `GET /api/cron/intelligence` | Vercel Cron executive-signal refresh; requires `CRON_SECRET` |
 
 Ingest an event and watch the state change:
 
@@ -118,8 +132,8 @@ Events are de-duplicated on `(source, externalId)`, so replaying a webhook is sa
 
 ## Deploying to Vercel
 
-Trajectory uses the Next.js App Router and deploys through Vercel's standard
-Git integration. It does not require a `vercel.json` or custom build settings.
+Trajectory uses the Next.js App Router and Vercel Git integration. `vercel.json`
+defines the daily background-intelligence schedule; no custom build output is required.
 
 1. **Clone the repository.**
 
@@ -140,22 +154,33 @@ Git integration. It does not require a `vercel.json` or custom build settings.
 4. **Configure environment variables.** In the import screen, add the four
    Required variables from `.env.example` to the **Production** environment:
 
-   - `ANTHROPIC_API_KEY`
    - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
+   - `CONNECTOR_ENCRYPTION_KEY`
+   - `CRON_SECRET`
+   - at least one provider API key
 
-   Apply `supabase/migrations/0001_init.sql` and then `0002_loop.sql` to that
-   Supabase project before the first persistent run. Add Optional variables only
-   for the capabilities you intend to test. Never expose
-   `SUPABASE_SERVICE_ROLE_KEY` with a `NEXT_PUBLIC_` prefix.
+   Apply every migration in `supabase/migrations/` in filename order to a
+   **dedicated Trajectory Supabase project**. Configure email verification plus
+   Google and Apple providers in Supabase Auth, and add `/auth/callback` to the
+   allowed redirect URLs. Set connector provider callbacks using the paths in
+   `.env.example`. Add Optional variables only for the capabilities you intend
+   to test. Never expose service, provider, OAuth or encryption secrets with a
+   `NEXT_PUBLIC_` prefix.
+
+   Keep `TRAJECTORY_AUTH_ENABLED=false` until the migrations and provider
+   configuration are complete. Then set it to `true` in Preview first, verify
+   signup, verification, reset and OAuth, and promote the same configuration to
+   Production.
 
 5. **Deploy.** Choose **Deploy**. Subsequent pushes to the configured production
    branch create production deployments; other branches receive preview URLs.
 
 6. **Verify the deployment.** Open `/api/health` on the deployed URL and confirm
-   it reports `"productionReady": true`, `"store": "supabase"`, and
-   `"reasoning": "claude"`. Then load the home screen and test the orb on both a
+   it reports `"productionReady": true` and `"store": "supabase"`. Then verify
+   signup, email confirmation, sign-in, `/dashboard`, sign-out and password reset.
+   Test the orb on both a
    desktop browser and a microphone-capable phone. If environment variables were
    added after a build, redeploy so the new values take effect.
 
@@ -163,12 +188,18 @@ Git integration. It does not require a `vercel.json` or custom build settings.
    **Settings → Domains**, add the domain, and follow the DNS records Vercel
    provides. Verify the domain after DNS propagation.
 
-### Private testing
+### Supabase and OAuth safety
 
-Trajectory is currently a single-operator build and does not yet implement
-end-user authentication. Enable **Vercel Deployment Protection** before using
-real personal or business data. Keep production and preview deployments protected
-until application authentication is added.
+The SaaS migration enforces owner-scoped Row Level Security and creates a profile
+and settings row from the Auth user trigger. Connector refresh tokens are
+AES-256-GCM encrypted before storage and the credential tables are revoked from
+browser roles. Service-role access is limited to request handlers that first
+authenticate a user and then filter by that user id, or to the signed cron route.
+
+Google and Apple sign-in still require provider credentials and redirect-domain
+configuration in the Supabase dashboard. Apple additionally requires an Apple
+Developer Services ID, key and verified domain. These external settings cannot
+be supplied by the repository itself.
 
 The maintained release gate is in
 [`PRODUCTION_CHECKLIST.md`](./PRODUCTION_CHECKLIST.md).
@@ -201,10 +232,11 @@ curl -X POST localhost:3000/api/actions -H 'content-type: application/json' -d '
 
 ```
 src/lib/state/engine.ts     deterministic scoring — momentum, bottleneck, leverage, risk
-src/lib/state/reasoner.ts   Claude narrative over the computed state
+src/lib/providers/          interchangeable Claude, OpenAI, Gemini, Grok and local adapters
+src/lib/state/reasoner.ts   provider narrative over the computed state
 src/lib/state/compute.ts    orchestration; the single entry point
 src/lib/memory/             hybrid retrieval + never-ask-twice
-src/lib/connectors/         registry; one file per connector
+src/lib/connectors/         registry, OAuth lifecycle and encrypted credential boundary
 src/lib/permissions.ts      five tiers, two ceilings
 src/lib/actions.ts          action pipeline, fully audited
 src/lib/store/              Supabase or seed, behind one interface
@@ -213,19 +245,12 @@ supabase/migrations/        schema, pgvector, RLS
 
 ---
 
-## Phase 1 scope
+## Current production boundary
 
-Implemented and runnable: memory, state engine, reasoner, dashboard, permissions,
-audit, connector modularity, event ingestion, voice scaffold.
-
-Deliberately not yet done — stated plainly rather than implied:
-
-- **No live OAuth.** Connectors are real interfaces with declared capabilities;
-  `pull` is unimplemented until Phase 2.
-- **No background daemon.** The recompute path is built and callable; putting it
-  on a queue with retries is Phase 3.
-- **Voice is a scaffold.** Briefing generation, speech synthesis and barge-in
-  work. Real-time full-duplex audio needs a streaming speech provider — Phase 4.
-- **Deterministic narrative reads mechanically.** Without `ANTHROPIC_API_KEY` the
-  spoken "why" recites scores rather than prose. That is the fallback working as
-  designed, not a bug.
+Authentication, tenant-isolated persistence, provider switching, OAuth account
+lifecycle, encrypted credentials, dashboard archives and change-aware scheduled
+reasoning are implemented. Vendor-specific connector data ingestion and token
+refresh adapters remain intentionally separate from the common framework: the
+current sync endpoint validates credential health and records runs but adds no
+vendor events yet. Background work is a daily Vercel Cron baseline; higher
+frequency or durable retry orchestration should use a queue as usage grows.

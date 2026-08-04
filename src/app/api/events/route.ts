@@ -32,7 +32,7 @@ const Body = z.object({
 
 export async function GET(request: Request) {
   const days = Number(new URL(request.url).searchParams.get("days") ?? 30);
-  const events = await getStore().events(days);
+  const events = await (await getStore()).events(days);
   return NextResponse.json({ events });
 }
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const store = getStore();
+  const store = await getStore();
   const events = parsed.events.map((e) =>
     toEvent({ ...e, occurredAt: e.occurredAt ?? new Date().toISOString() }),
   );
