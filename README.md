@@ -155,7 +155,8 @@ defines the daily background-intelligence schedule; no custom build output is re
    variables from `.env.example` to the **Production** environment:
 
    - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or the legacy
+     `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `CONNECTOR_ENCRYPTION_KEY`
    - `CRON_SECRET`
