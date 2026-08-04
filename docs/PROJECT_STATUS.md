@@ -3,7 +3,7 @@
 > Authoritative living record of Trajectory's product progress, engineering
 > milestones, verification history and next recommended milestone.
 >
-> Last updated: 4 August 2026
+> Last updated: 5 August 2026
 
 ## Vision
 
@@ -20,9 +20,10 @@ thinking while the user was away.
 
 The core Trajectory orb experience is deployed through GitHub and Vercel. The
 SaaS foundation was merged through PR #3 into the repository's
-production/default branch. Multi-user activation remains feature
-gated until a dedicated Trajectory Supabase project and external OAuth settings
-are configured.
+production/default branch. The dedicated `trajectory-prod` Supabase project is
+healthy, all four production migrations are applied, and a complete Supabase
+environment now activates authenticated workspaces automatically. External
+Google, Apple and connector OAuth applications remain separately configurable.
 
 ### Authentication
 
@@ -32,6 +33,8 @@ are configured.
 - Automatic profile and settings creation for every Auth user.
 - Owner-scoped Row Level Security and composite ownership constraints prevent
   cross-workspace conversation access.
+- Production activation is configuration-driven, with an explicit environment
+  kill switch retained for incident response.
 
 ### Memory
 
@@ -145,6 +148,21 @@ entries must not be removed.
   health routes; client secret-name scan passed. Live multi-user and OAuth tests
   await the dedicated Supabase project and provider configuration.
 
+### 5 August 2026 — Production Supabase activation
+
+- **Version or PR:** PR #4
+- **Summary:** Connected Trajectory to its dedicated production Supabase
+  boundary and activated the multi-user workspace foundation.
+- **Key achievements:** Applied the core, continuous-loop, SaaS and production
+  hardening migrations; provisioned 27 RLS-protected tables and policies;
+  verified automatic profile/settings creation; proved two-tenant conversation
+  and message isolation; removed manual auth activation from the normal deploy
+  path; resolved all Supabase security-advisor findings.
+- **Verification status:** Migration history confirmed on `trajectory-prod`;
+  transactional two-user RLS test passed and rolled back cleanly; security
+  advisor returned zero findings; ESLint, strict TypeScript and Next.js
+  production build passed.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
@@ -169,25 +187,18 @@ entries must not be removed.
 - **Background jobs:** Signed Vercel Cron endpoint uses service-role access with
   explicit user filters. Fingerprinting provides change detection and provider
   call suppression.
-- **Deployment:** GitHub default branch deploys to Vercel. Environment activation
-  is staged behind `TRAJECTORY_AUTH_ENABLED` so the existing production orb can
-  continue operating until the SaaS database is ready.
+- **Deployment:** GitHub default branch deploys to Vercel. A complete Supabase
+  environment activates Auth and request-scoped persistence automatically;
+  `TRAJECTORY_AUTH_ENABLED=false` remains an emergency kill switch.
 
 ## Remaining Work
 
 ### Critical
 
-- **Provision a dedicated Trajectory Supabase project.** Apply all migrations in
-  filename order and verify the schema independently of other Resurrection Tech
-  systems. Expected outcome: a safe database boundary for multi-user activation.
-- **Exercise tenant isolation against the live database.** Create two test users
-  and prove that conversations, messages, goals, memory, briefs, settings and
-  connectors cannot cross tenants. Expected outcome: evidence-backed production
-  RLS assurance.
-- **Activate authentication in Preview.** Configure environment variables and
-  set `TRAJECTORY_AUTH_ENABLED=true` only after migrations succeed. Expected
-  outcome: complete signup-to-private-workspace flow without affecting current
-  production users.
+- **Complete a real mailbox-backed authentication acceptance test.** Verify
+  signup, email confirmation, session persistence, password reset and sign-out
+  with a controlled production test address. Expected outcome: operational
+  evidence for the external email-delivery portion of the Auth flow.
 
 ### High
 
@@ -231,16 +242,12 @@ entries must not be removed.
 
 ## Known Blockers
 
-- No dedicated Trajectory Supabase project has been confirmed. The connected
-  Supabase project appears to serve another production application and must not
-  receive Trajectory migrations.
 - Google OAuth requires client credentials and redirect configuration.
 - Apple Sign In requires Apple Developer configuration and verified domains.
 - Live connector testing requires vendor OAuth applications and test accounts.
-- The production migration has not yet been applied or verified against a real
-  Trajectory database.
-- Browser automation was unavailable in the implementation workspace; physical
-  Safari and Chrome testing remains outstanding.
+- Mailbox-backed email verification and password-reset acceptance still require
+  a controlled production test address.
+- Physical Safari and Chrome authentication testing remains outstanding.
 
 ## Changelog
 
@@ -280,6 +287,21 @@ Changelog entries are append-only.
 - **Follow-up:** Provision the dedicated Supabase project, apply migrations,
   configure external OAuth and conduct two-user isolation tests.
 
+### 5 August 2026 — Production Supabase activation
+
+- **What changed:** Applied all committed SaaS migrations to the dedicated
+  `trajectory-prod` database, added a production-hardening migration, made a
+  complete Supabase environment activate Auth by default, and synchronized the
+  deployment documentation.
+- **Why:** Turn the merged SaaS architecture into an operational, isolated
+  production workspace without adding another manual activation step.
+- **Verification performed:** Confirmed 27 public tables with RLS and ownership
+  policies, zero anonymous table grants, profile/settings provisioning, tenant A
+  persistence, tenant B isolation, clean transactional rollback, zero security
+  advisor findings, lint, strict TypeScript and production build.
+- **Follow-up:** Complete mailbox-backed Auth acceptance, configure Google and
+  Apple sign-in, then begin the first vendor connector ingestion adapter.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -304,11 +326,11 @@ Changelog entries are append-only.
 
 ## Next Recommended Milestone
 
-**Provision and validate the dedicated Trajectory Supabase Preview environment.**
+**Complete production Auth acceptance and activate the first live connector.**
 
-Apply the full migration set to an isolated project, configure Preview
-environment variables, enable authentication only in Preview, create two users
-and produce evidence that signup, session persistence, provider settings,
-conversation memory and RLS isolation work end to end. This is the highest-impact
-next step because it turns the completed application architecture into a safely
-testable multi-user platform without risking the existing production orb.
+Use a controlled mailbox to verify email confirmation, password recovery and
+session persistence on mobile and desktop; configure Google and Apple sign-in;
+then implement Google Calendar ingestion through the existing connector
+contract. This is the highest-impact next step because the database boundary and
+tenant isolation are now proven, leaving external identity and real observation
+data as the next constraints on private multi-user testing.

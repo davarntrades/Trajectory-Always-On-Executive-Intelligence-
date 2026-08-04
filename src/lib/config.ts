@@ -11,6 +11,15 @@
  * be verifiable before any OAuth flow exists.
  */
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabasePublishableKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const hasCompleteSupabaseConfiguration = Boolean(
+  supabaseUrl && supabasePublishableKey && supabaseServiceKey,
+);
+
 export const config = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   openaiApiKey: process.env.OPENAI_API_KEY,
@@ -18,13 +27,19 @@ export const config = {
   xaiApiKey: process.env.XAI_API_KEY,
   localProviderBaseUrl: process.env.LOCAL_PROVIDER_BASE_URL,
   localProviderApiKey: process.env.LOCAL_PROVIDER_API_KEY,
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-  supabasePublishableKey:
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  authEnabled: process.env.TRAJECTORY_AUTH_ENABLED === "true",
-  appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  supabaseUrl,
+  supabasePublishableKey,
+  supabaseServiceKey,
+  // A complete Supabase environment now activates the production workspace by
+  // default. An explicit false remains available as an incident kill switch.
+  authEnabled:
+    process.env.TRAJECTORY_AUTH_ENABLED !== "false" &&
+    hasCompleteSupabaseConfiguration,
+  appUrl:
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "http://localhost:3000"),
   connectorEncryptionKey: process.env.CONNECTOR_ENCRYPTION_KEY,
   cronSecret: process.env.CRON_SECRET,
 
@@ -84,7 +99,7 @@ export function productionEnvironmentStatus() {
   if (config.authEnabled) {
     if (!config.connectorEncryptionKey) missing.push("CONNECTOR_ENCRYPTION_KEY");
     if (!config.cronSecret) missing.push("CRON_SECRET");
-    if (!process.env.NEXT_PUBLIC_APP_URL) missing.push("NEXT_PUBLIC_APP_URL");
+    if (config.appUrl === "http://localhost:3000") missing.push("NEXT_PUBLIC_APP_URL");
   }
 
   return {
