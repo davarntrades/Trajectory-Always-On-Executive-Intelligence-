@@ -19,8 +19,8 @@ thinking while the user was away.
 ### Deployment status
 
 The core Trajectory orb experience is deployed through GitHub and Vercel. The
-SaaS foundation in this milestone is build-verified and being merged into the
-repository's production/default branch. Multi-user activation remains feature
+SaaS foundation was merged through PR #3 into the repository's
+production/default branch. Multi-user activation remains feature
 gated until a dedicated Trajectory Supabase project and external OAuth settings
 are configured.
 
@@ -132,7 +132,7 @@ entries must not be removed.
 
 ### 4 August 2026 — Multi-user SaaS foundation
 
-- **Version or PR:** Current milestone; PR number to be recorded before merge
+- **Version or PR:** PR #3
 - **Summary:** Evolved Trajectory from a single-user prototype into a modular,
   tenant-isolated SaaS foundation while preserving the existing orb UX.
 - **Key achievements:** Supabase Auth flows, tenant schema and RLS, persistent
