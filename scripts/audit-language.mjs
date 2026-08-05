@@ -11,6 +11,7 @@ const compatibilityPaths = [
   /src\/app\/auth\/(callback|confirm)\//,
   /src\/app\/api\//,
   /src\/components\/dashboard\/loop-panels\.tsx$/,
+  /src\/components\/trajectory\/trajectory-experience\.tsx$/,
   /src\/lib\/types\.ts$/,
   /src\/lib\/workspace\/repository\.ts$/,
   /src\/lib\/providers\//,
@@ -19,6 +20,8 @@ const compatibilityPaths = [
   /src\/lib\/connectors\//,
   /src\/lib\/background\//,
   /src\/lib\/workers\//,
+  /src\/lib\/executive-signals\.ts$/,
+  /src\/lib\/personalization\.ts$/,
   /src\/lib\/config\.ts$/,
   /src\/content\/trajectory-language\.ts$/,
 ];
