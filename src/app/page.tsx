@@ -14,12 +14,14 @@ export default async function Home() {
   const profile = user ? await getPersonalProfile() : null;
   const checkIn = profile ? await getTodayCheckIn(profile) : null;
   const showCheckIn = profile ? await shouldShowMorningCheckIn(profile, checkIn) : false;
-  const preferredProvider = profile?.provider && profile.provider !== "auto"
-    && !providers.find((provider) => provider.id === profile.provider)?.configured
-    ? "auto"
-    : profile?.provider ?? user?.provider;
+  const preferredProvider = profile?.provider ?? user?.provider ?? config.defaultProvider;
   const ownerName = profile?.displayName ?? user?.displayName ?? config.ownerName;
-  const state = await computeState({ persist: true, provider: preferredProvider, ownerName });
+
+  // Ordinary page rendering must never invoke an external provider. Provider
+  // synthesis belongs to an explicit user interaction such as the voice route.
+  // This keeps the root experience available when a key, model, or provider is
+  // temporarily unavailable and prevents an external error from aborting SSR.
+  const state = await computeState({ persist: true, deterministicOnly: true, ownerName });
   const experienceState: ExperienceState = {
     computedAt: state.computedAt,
     trajectory: state.trajectory,
@@ -32,7 +34,7 @@ export default async function Home() {
   };
 
   return <>
-    <TrajectoryExperience ownerName={ownerName} state={experienceState} providers={providers} defaultProvider={preferredProvider ?? state.provider ?? config.defaultProvider} />
+    <TrajectoryExperience ownerName={ownerName} state={experienceState} providers={providers} defaultProvider={preferredProvider} />
     {profile ? <EntryExperiences initialProfile={profile} initialCheckIn={checkIn} showMorningCheckIn={showCheckIn} providers={providers} /> : null}
   </>;
 }
