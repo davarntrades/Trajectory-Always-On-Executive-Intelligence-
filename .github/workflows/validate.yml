@@ -29,15 +29,15 @@ jobs:
   preview-smoke:
     if: github.event_name == 'pull_request' && github.event.pull_request.number == 7
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       PREVIEW_URL: https://trajectory-ai-git-feature-voice-pe-1b2bc9-davarntrades-projects.vercel.app
     steps:
-      - name: Wait for matching preview deployment
+      - name: Verify live preview routes
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 40); do
+          for attempt in $(seq 1 6); do
             root_headers=$(mktemp)
             dashboard_headers=$(mktemp)
             root_status=$(curl --silent --show-error --dump-header "$root_headers" --output /tmp/root.html --write-out '%{http_code}' "$PREVIEW_URL/" || true)
@@ -57,17 +57,12 @@ jobs:
               grep -qi 'authentication required' /tmp/health.json
               exit 0
             fi
-            sleep 15
+            sleep 10
           done
-          echo 'Root response:'
-          head -c 500 /tmp/root.html || true
-          echo
-          echo 'Dashboard response:'
-          head -c 500 /tmp/dashboard.html || true
-          echo
-          echo 'Login response:'
-          head -c 500 /tmp/login.html || true
-          echo
-          echo 'Provider health response:'
-          cat /tmp/health.json || true
+          echo '--- root headers ---'; cat "$root_headers" || true
+          echo '--- root response ---'; head -c 1000 /tmp/root.html || true; echo
+          echo '--- dashboard headers ---'; cat "$dashboard_headers" || true
+          echo '--- dashboard response ---'; head -c 1000 /tmp/dashboard.html || true; echo
+          echo '--- login response ---'; head -c 1000 /tmp/login.html || true; echo
+          echo '--- provider health response ---'; cat /tmp/health.json || true; echo
           exit 1
