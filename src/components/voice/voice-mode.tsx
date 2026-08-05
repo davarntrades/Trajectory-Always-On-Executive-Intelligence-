@@ -19,7 +19,7 @@ export function VoiceMode() {
   const [rawStatus, setStatus] = useState<Status>("idle");
   const [lines, setLines] = useState<string[]>([]);
   const [heard, setHeard] = useState("");
-  const [cycleLabel, setCycleLabel] = useState(language.loadingStates.integratingObservations);
+  const [cycleLabel, setCycleLabel] = useState<string>(language.loadingStates.integratingObservations);
   const cycleRef = useRef(0);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const status: Status = supported ? rawStatus : "unsupported";
