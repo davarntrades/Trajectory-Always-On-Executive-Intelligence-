@@ -81,7 +81,7 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
   const [briefLines, setBriefLines] = useState<string[]>([]);
   const [provider, setProvider] = useState<ProviderPreference>(defaultProvider);
   const [activeModel, setActiveModel] = useState<string | null>(null);
-  const [cycleLabel, setCycleLabel] = useState(language.loadingStates.integratingObservations);
+  const [cycleLabel, setCycleLabel] = useState<string>(language.loadingStates.integratingObservations);
   const cycleRef = useRef(0);
   const orbRef = useRef<HTMLButtonElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
