@@ -31,6 +31,7 @@ export interface ProviderRequest {
 export interface ProviderResponse {
   narrative: ProviderNarrative;
   model: string;
+  requestId?: string | null;
 }
 
 export interface IntelligenceProvider {
