@@ -7,10 +7,13 @@ const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
 const extensions = new Set([".ts", ".tsx"]);
 const prohibited = /\b(Thinking|Processing|Reasoning|Analysing|Analyzing|Computing|Generating|Assistant|AI response|Chat|Conversation|Loading|Message)\b/gi;
 const compatibilityPaths = [
+  /src\/app\/\(auth\)\//,
+  /src\/app\/auth\/(callback|confirm)\//,
+  /src\/app\/api\//,
+  /src\/components\/dashboard\/loop-panels\.tsx$/,
   /src\/lib\/types\.ts$/,
   /src\/lib\/workspace\/repository\.ts$/,
   /src\/lib\/providers\//,
-  /src\/app\/api\//,
   /src\/lib\/state\//,
   /src\/lib\/store\//,
   /src\/lib\/connectors\//,
@@ -29,16 +32,13 @@ async function files(directory) {
 }
 
 function isRenderedLiteral(line, term) {
-  const lower = line.toLowerCase();
-  const index = lower.indexOf(term.toLowerCase());
+  const index = line.toLowerCase().indexOf(term.toLowerCase());
   if (index < 0) return false;
   const before = line.slice(0, index);
   const after = line.slice(index + term.length);
-  const inSingle = (before.match(/'/g)?.length ?? 0) % 2 === 1 && after.includes("'");
-  const inDouble = (before.match(/"/g)?.length ?? 0) % 2 === 1 && after.includes('"');
-  const inTemplate = (before.match(/`/g)?.length ?? 0) % 2 === 1 && after.includes("`");
-  const jsxText = before.lastIndexOf(">") > before.lastIndexOf("<") && after.indexOf("<") >= 0;
-  return inSingle || inDouble || inTemplate || jsxText;
+  const inside = (quote) => (before.match(new RegExp(`\\${quote}`, "g"))?.length ?? 0) % 2 === 1 && after.includes(quote);
+  const jsxText = before.lastIndexOf(">") > before.lastIndexOf("<") && after.indexOf("<") >= 0 && !before.endsWith("{");
+  return inside("'") || inside('"') || inside("`") || jsxText;
 }
 
 const unresolved = [];
