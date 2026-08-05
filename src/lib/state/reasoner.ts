@@ -1,7 +1,7 @@
 /** Provider-neutral narrative synthesis over the deterministic state engine. */
 import { trajectoryLanguage as language } from "@/content/trajectory-language";
 import { config } from "@/lib/config";
-import { resolveProvider, type ProviderId, type ProviderPreference } from "@/lib/providers";
+import { ProviderRequestError, resolveProvider, type ProviderId, type ProviderPreference } from "@/lib/providers";
 import type { EngineOutput } from "@/lib/state/engine";
 import type { Memory, RecommendedAction } from "@/lib/types";
 
@@ -70,7 +70,9 @@ export async function synthesise(engine: EngineOutput, memories: Memory[], optio
     return { todaysObjective: response.narrative.todaysObjective, reasoning: response.narrative.reasoning, recommendedAction: top ? { title: response.narrative.recommendedAction.title, why: response.narrative.recommendedAction.why, leverage: top.leverage, candidateId: top.id, tier: top.kind === "opportunity" ? "draft" : "recommend" } : undefined, provider: provider.id, model: response.model };
   } catch (error) {
     console.error(`[trajectory] ${provider.id} synthesis failed:`, error);
-    if (options.provider && options.provider !== "auto") throw error;
+    if (options.provider && options.provider !== "auto") {
+      throw new ProviderRequestError(provider.id, provider.model, error instanceof Error ? error.name : "UnknownError", error instanceof Error ? error.message : "Provider request failed");
+    }
     return fallback;
   }
 }
