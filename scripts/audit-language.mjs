@@ -1,8 +1,9 @@
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("../", import.meta.url);
-const sourceRoot = new URL("../src/", import.meta.url);
+const root = fileURLToPath(new URL("../", import.meta.url));
+const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
 const extensions = new Set([".ts", ".tsx"]);
 const prohibited = /\b(Thinking|Processing|Reasoning|Analysing|Analyzing|Computing|Generating|Assistant|AI response|Chat|Conversation|Loading|Message)\b/gi;
 const compatibilityPaths = [
@@ -10,7 +11,6 @@ const compatibilityPaths = [
   /src\/lib\/workspace\/repository\.ts$/,
   /src\/lib\/providers\//,
   /src\/app\/api\//,
-  /src\/lib\/store\//,
   /src\/lib\/state\//,
   /src\/content\/trajectory-language\.ts$/,
 ];
@@ -27,13 +27,14 @@ async function files(directory) {
 const unresolved = [];
 const exceptions = [];
 for (const file of await files(sourceRoot)) {
-  const path = relative(root.pathname, file).replaceAll("\\", "/");
+  const path = relative(root, file).replaceAll("\\", "/");
   const source = await readFile(file, "utf8");
+  const sourceLines = source.split("\n");
   for (const match of source.matchAll(prohibited)) {
     const line = source.slice(0, match.index).split("\n").length;
     const record = `${path}:${line}:${match[0]}`;
     const internal = compatibilityPaths.some((pattern) => pattern.test(path));
-    const lineText = source.split("\n")[line - 1] ?? "";
+    const lineText = sourceLines[line - 1] ?? "";
     const developerOnly = /^\s*(\/\/|\*|\/\*)/.test(lineText);
     if (internal || developerOnly) exceptions.push(record);
     else unresolved.push(record);
