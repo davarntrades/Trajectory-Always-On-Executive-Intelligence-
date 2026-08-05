@@ -7,12 +7,18 @@ export type ProviderId = (typeof providerIds)[number];
 export type ProviderPreference = (typeof providerPreferences)[number];
 
 export const ProviderNarrativeSchema = z.object({
-  todaysObjective: z.string().min(1),
-  reasoning: z.string().min(1),
+  todaysObjective: z.string().trim().min(8).max(420),
+  reasoning: z.string().trim().min(40).max(1200),
   recommendedAction: z.object({
-    title: z.string().min(1),
-    why: z.string().min(1),
+    title: z.string().trim().min(8).max(420),
+    why: z.string().trim().min(20).max(600),
   }),
+  currentObservation: z.string().trim().min(12).max(320),
+  currentConstraint: z.string().trim().min(8).max(240),
+  expectedImpact: z.string().trim().min(12).max(320),
+  confidence: z.number().min(0).max(1),
+  suggestedNextAction: z.string().trim().min(6).max(180),
+  urgency: z.number().min(0).max(1),
 });
 
 export type ProviderNarrative = z.infer<typeof ProviderNarrativeSchema>;
