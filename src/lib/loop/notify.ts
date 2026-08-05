@@ -1,244 +1,111 @@
-/**
- * Notification and cadence briefs.
- *
- * Two distinct surfaces, deliberately separated:
- *
- *   - **Interrupts** are change-driven. They fire only when a delta crosses the
- *     salience threshold, because the right to break someone's focus has to be
- *     earned by being right about what matters.
- *
- *   - **Cadence briefs** (morning / midday / evening) are time-shaped digests
- *     that summarise everything accumulated since the last one. They never
- *     interrupt; they are read when opened.
- *
- * Both read the same state and the same delta, so they cannot disagree.
- */
-
+import { trajectoryLanguage as language } from "@/content/trajectory-language";
 import { config } from "@/lib/config";
 import type { TrajectoryState } from "@/lib/types";
 import type { Change, StateDelta } from "./delta";
 
 export type Cadence = "morning" | "midday" | "evening";
-
 export interface Notification {
   id: string;
   at: string;
-  /** `interrupt` pushes; `digest` waits to be read. */
   channel: "interrupt" | "digest";
   cadence?: Cadence;
   title: string;
   body: string;
   salience: number;
   changeKinds: string[];
-  /** Speech-shaped rendering for voice. */
   speech: string;
 }
 
 function localHour(iso: string): number {
-  return Number(
-    new Intl.DateTimeFormat("en-GB", {
-      hour: "numeric",
-      hour12: false,
-      timeZone: config.timezone,
-    }).format(new Date(iso)),
-  );
+  return Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: config.timezone }).format(new Date(iso)));
 }
-
 export function cadenceFor(iso: string): Cadence {
   const hour = localHour(iso);
   if (hour < 11) return "morning";
   if (hour < 17) return "midday";
   return "evening";
 }
+const stripPunctuation = (value: string) => value.replace(/[.!?]+$/, "");
+const lowerFirst = (value: string) => value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
 
-const stripPunctuation = (s: string) => s.replace(/[.!?]+$/, "");
-const lowerFirst = (s: string) =>
-  s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
-
-/**
- * The interrupt.
- *
- * One change, stated plainly, with what to do about it. Interrupts that bundle
- * five things are ignored, so this takes the single highest-salience change and
- * attaches the current recommendation only when the decision actually moved.
- */
-export function buildInterrupt(
-  state: TrajectoryState,
-  delta: StateDelta,
-): Notification | null {
+export function buildInterrupt(state: TrajectoryState, delta: StateDelta): Notification | null {
   const top = delta.changes[0];
   if (!top) return null;
-
-  const lines: string[] = [stripPunctuation(top.summary) + "."];
-  lines.push(top.why);
-
-  // A freed window is the one case where the useful response is a suggestion
-  // sized to the window, not the global top recommendation.
+  const lines = [`${stripPunctuation(top.summary)}.`, top.why];
   if (top.kind === "window_opened") {
     const fit = pickForWindow(state, top);
-    if (fit) lines.push(`I'd use it for: ${fit}.`);
+    if (fit) lines.push(language.briefing.action(stripPunctuation(fit)));
   } else if (delta.decisionChanged && state.recommendedAction) {
-    lines.push(
-      `Highest-leverage action is now ${stripPunctuation(state.recommendedAction.title)}.`,
-    );
+    lines.push(language.briefing.action(stripPunctuation(state.recommendedAction.title)));
   }
-
   return {
-    id: crypto.randomUUID(),
-    at: state.computedAt,
-    channel: "interrupt",
-    title: top.summary,
-    body: lines.slice(1).join(" "),
-    salience: top.salience,
-    changeKinds: [top.kind],
-    speech: lines.join(" "),
+    id: crypto.randomUUID(), at: state.computedAt, channel: "interrupt", title: top.summary,
+    body: lines.slice(1).join(" "), salience: top.salience, changeKinds: [top.kind], speech: lines.join(" "),
   };
 }
 
-/**
- * Best use of a freed window.
- *
- * Not simply the highest-leverage item that fits: suggesting a 30-minute email
- * for a freed 90 minutes wastes an hour of recovered deep-work time. Candidates
- * are scored by leverage weighted by how much of the window they actually use,
- * so a block gets filled by the largest worthwhile thing that fits in it.
- */
 function pickForWindow(state: TrajectoryState, change: Change): string | null {
   const minutes = Number(/(\d+)\s*minutes/.exec(change.summary)?.[1] ?? 60);
   const hours = minutes / 60;
-
-  const scored = state.signals.candidates
-    .filter((c) => c.effortHours <= hours * 1.1)
-    .map((c) => ({
-      candidate: c,
-      // Utilisation is square-rooted so it tilts the ranking without letting a
-      // low-value time-filler beat a genuinely important short task.
-      fit: c.leverage * Math.sqrt(Math.min(1, c.effortHours / hours)),
-    }))
-    .sort((a, b) => b.fit - a.fit);
-
-  return scored[0]?.candidate.title ?? null;
+  return state.signals.candidates.filter((candidate) => candidate.effortHours <= hours * 1.1)
+    .map((candidate) => ({ candidate, fit: candidate.leverage * Math.sqrt(Math.min(1, candidate.effortHours / hours)) }))
+    .sort((a, b) => b.fit - a.fit)[0]?.candidate.title ?? null;
 }
 
-/**
- * The cadence brief.
- *
- * Shape differs by time of day because the useful question differs: the morning
- * sets direction, midday reacts to how the day actually went, and the evening
- * closes the loop and points at tomorrow.
- */
-export function buildCadenceBrief(
-  state: TrajectoryState,
-  delta: StateDelta,
-  cadence: Cadence = cadenceFor(state.computedAt),
-): Notification {
+export function buildCadenceBrief(state: TrajectoryState, delta: StateDelta, cadence: Cadence = cadenceFor(state.computedAt)): Notification {
   const lines: string[] = [];
   const changes = delta.changes;
-
   const greetings: Record<Cadence, string> = {
-    morning: `Good morning ${config.ownerName}.`,
-    midday: "Quick midday check.",
-    evening: "Closing out the day.",
+    morning: language.dailySummary.morningGreeting(config.ownerName),
+    midday: language.dailySummary.middayGreeting,
+    evening: language.dailySummary.eveningGreeting,
   };
   lines.push(greetings[cadence]);
 
   if (cadence === "morning") {
-    const meetings = state.signals.outstandingCommitments.length;
-    const momentum = state.signals.projectMomentum;
-    const improving = momentum.filter((m) => m.delta > 0.5);
-    const cooling = momentum.filter((m) => m.status === "cooling" || m.status === "stalled");
-
-    // Name at most two. A brief that lists every project is a report, and
-    // reports get skimmed rather than heard.
-    if (improving.length) {
-      const named = improving
-        .sort((a, b) => b.delta - a.delta)
-        .slice(0, 2)
-        .map((m) => m.projectName);
-      const rest = improving.length - named.length;
-      const subject =
-        rest > 0
-          ? `${named.join(", ")} and ${rest} other${rest === 1 ? "" : "s"}`
-          : listNames(named);
-      lines.push(`Technical progress improved on ${subject}.`);
-    }
-    if (cooling.length) {
-      const named = cooling.slice(0, 2).map((m) => m.projectName);
-      lines.push(
-        `${listNames(named)} ${named.length === 1 ? "has" : "have"} gone quiet.`,
-      );
-    }
-
-    lines.push(
-      state.signals.commercialDelta < -0.05
-        ? "Commercial momentum has slipped."
-        : state.signals.commercialDelta > 0.05
-          ? "Commercial momentum is up."
-          : "Commercial momentum is unchanged.",
-    );
-
-    if (meetings) {
-      lines.push(`${meetings} commitment${meetings === 1 ? "" : "s"} outstanding today.`);
-    }
+    const improving = state.signals.projectMomentum.filter((item) => item.delta > 0.5).sort((a, b) => b.delta - a.delta).slice(0, 2);
+    const cooling = state.signals.projectMomentum.filter((item) => item.status === "cooling" || item.status === "stalled").slice(0, 2);
+    if (improving.length) lines.push(`Directional momentum strengthened across ${listNames(improving.map((item) => item.projectName))}.`);
+    if (cooling.length) lines.push(`Movement softened across ${listNames(cooling.map((item) => item.projectName))}.`);
+    lines.push(state.signals.commercialDelta < -0.05 ? "Commercial momentum softened." : state.signals.commercialDelta > 0.05 ? "Commercial momentum strengthened." : "Commercial momentum held steady.");
+    const commitments = state.signals.outstandingCommitments.length;
+    if (commitments) lines.push(`${commitments} commitment${commitments === 1 ? " remains" : "s remain"} active today.`);
   }
 
   if (cadence === "midday") {
-    const windows = changes.filter((c) => c.kind === "window_opened");
-    if (windows.length) {
-      lines.push(stripPunctuation(windows[0].summary) + ".");
-      const fit = pickForWindow(state, windows[0]);
-      if (fit) lines.push(`I recommend using it to ${lowerFirst(stripPunctuation(fit))}.`);
-    } else if (changes.length) {
-      lines.push(stripPunctuation(changes[0].summary) + ".");
-    } else {
-      lines.push("Nothing has moved since this morning.");
-    }
+    const window = changes.find((change) => change.kind === "window_opened");
+    if (window) {
+      lines.push(`${stripPunctuation(window.summary)}.`);
+      const fit = pickForWindow(state, window);
+      if (fit) lines.push(language.briefing.action(lowerFirst(stripPunctuation(fit))));
+    } else if (changes.length) lines.push(`${stripPunctuation(changes[0].summary)}.`);
+    else lines.push(language.emptyStates.noChanges);
   }
 
   if (cadence === "evening") {
-    const direction =
-      state.trajectory === "accelerating" || state.trajectory === "steady"
-        ? "Today's trajectory improved."
-        : `Today's trajectory is ${state.trajectory}.`;
-    lines.push(direction);
-
-    const eased = changes.find((c) => c.kind === "risk_eased");
-    const escalated = changes.find((c) => c.kind === "risk_escalated");
-    if (eased) lines.push("Risk decreased.");
-    if (escalated) lines.push(`Risk rose to ${state.riskLevel}.`);
-
-    const unresolved = state.signals.waiting.filter((w) => w.overdue);
-    if (unresolved.length) {
-      lines.push(
-        `${unresolved.length} commercial dependenc${unresolved.length === 1 ? "y remains" : "ies remain"} unresolved.`,
-      );
-    }
-
-    if (delta.decisionChanged) {
-      lines.push("Tomorrow's highest-leverage action has changed.");
-    }
+    lines.push(state.trajectory === "accelerating" || state.trajectory === "steady" ? "Today’s trajectory strengthened." : directionFor(state.trajectory));
+    if (changes.some((change) => change.kind === "risk_eased")) lines.push("Risk decreased.");
+    if (changes.some((change) => change.kind === "risk_escalated")) lines.push(language.briefing.risk(state.riskLevel));
+    const unresolved = state.signals.waiting.filter((item) => item.overdue).length;
+    if (unresolved) lines.push(`${unresolved} commercial dependenc${unresolved === 1 ? "y remains" : "ies remain"} unresolved.`);
   }
 
-  if (state.recommendedAction && cadence !== "midday") {
-    lines.push(
-      `${cadence === "evening" ? "Tomorrow" : "Today"}'s highest-leverage action is ${lowerFirst(stripPunctuation(state.recommendedAction.title))}.`,
-    );
-  }
-
-  const speech = lines.join(" ");
+  if (state.recommendedAction && cadence !== "midday") lines.push(language.briefing.action(lowerFirst(stripPunctuation(state.recommendedAction.title))));
+  const titles: Record<Cadence, string> = {
+    morning: language.dailySummary.morningTitle,
+    midday: language.dailySummary.middayTitle,
+    evening: language.dailySummary.eveningTitle,
+  };
   return {
-    id: crypto.randomUUID(),
-    at: state.computedAt,
-    channel: "digest",
-    cadence,
-    title: `${cadence[0].toUpperCase()}${cadence.slice(1)} brief`,
-    body: lines.slice(1).join(" "),
-    salience: delta.peakSalience,
-    changeKinds: [...new Set(changes.map((c) => c.kind))],
-    speech,
+    id: crypto.randomUUID(), at: state.computedAt, channel: "digest", cadence, title: titles[cadence],
+    body: lines.slice(1).join(" "), salience: delta.peakSalience,
+    changeKinds: [...new Set(changes.map((change) => change.kind))], speech: lines.join(" "),
   };
 }
 
+function directionFor(direction: TrajectoryState["trajectory"]) {
+  return direction === "slipping" ? language.trajectory.slipping : direction === "stalled" ? language.trajectory.stalled : language.trajectory.steady;
+}
 function listNames(names: string[]): string {
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} and ${names[1]}`;
