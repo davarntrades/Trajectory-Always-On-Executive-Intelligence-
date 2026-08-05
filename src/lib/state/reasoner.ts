@@ -41,7 +41,7 @@ function renderState(engine: EngineOutput, memories: Memory[]): string {
 export function deterministicNarrative(engine: EngineOutput): ReasonerResult {
   const top = engine.signals.candidates[0];
   const bottleneck = engine.bottleneck;
-  const parts = [engine.trajectory === "accelerating" ? language.trajectory.accelerating : engine.trajectory === "steady" ? language.trajectory.steady : engine.trajectory === "slipping" ? language.trajectory.slipping : language.trajectory.stalled];
+  const parts: string[] = [engine.trajectory === "accelerating" ? language.trajectory.accelerating : engine.trajectory === "steady" ? language.trajectory.steady : engine.trajectory === "slipping" ? language.trajectory.slipping : language.trajectory.stalled];
   if (engine.riskFactors.length) parts.push(`Risk drivers: ${engine.riskFactors.join("; ")}.`);
   const why = top ? bottleneck?.id === top.id ? `Leverage ${top.leverage}. ${top.effortHours}h releases ${bottleneck.dependencyCount} blocked item(s): ${bottleneck.blockedItems.slice(0, 3).join(", ")}.` : `Leverage ${top.leverage}. ${top.factors.join("; ")}.` : "";
   return { todaysObjective: engine.todaysObjective, reasoning: parts.join(" "), recommendedAction: top ? { title: top.title, why, leverage: top.leverage, candidateId: top.id, tier: top.kind === "opportunity" ? "draft" : "recommend" } : undefined };
