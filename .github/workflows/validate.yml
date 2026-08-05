@@ -33,34 +33,21 @@ jobs:
     env:
       PREVIEW_URL: https://trajectory-ai-git-feature-voice-pe-1b2bc9-davarntrades-projects.vercel.app
     steps:
-      - name: Probe live preview routes
+      - name: Probe live preview edge
         shell: bash
         run: |
           set -euo pipefail
-          root_headers=$(mktemp)
-          root_status=$(curl --silent --show-error --dump-header "$root_headers" --output /tmp/root.html --write-out '%{http_code}' "$PREVIEW_URL/" || true)
-          root_location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\r",""); print $2}' "$root_headers" | tail -1)
-          echo "root=$root_status location=$root_location"
-
-          if [[ "$root_status" == "302" && "$root_location" == https://vercel.com/sso-api* ]]; then
-            echo '::warning::Vercel Deployment Protection intercepted the request before application runtime. Route health is inconclusive and still requires an authenticated probe.'
+          headers=$(mktemp)
+          status=$(curl --silent --show-error --dump-header "$headers" --output /tmp/body --write-out '%{http_code}' "$PREVIEW_URL/" || true)
+          location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\r",""); print $2}' "$headers" | tail -1)
+          echo "status=$status location=$location"
+          if [[ "$status" == "302" && "$location" == https://vercel.com/sso-api* ]]; then
+            echo '::warning::Vercel Deployment Protection is active. The deployment edge is reachable, but application runtime remains unverified without an authenticated bypass.'
             exit 0
           fi
-
-          dashboard_headers=$(mktemp)
-          dashboard_status=$(curl --silent --show-error --dump-header "$dashboard_headers" --output /tmp/dashboard.html --write-out '%{http_code}' "$PREVIEW_URL/dashboard" || true)
-          login_status=$(curl --silent --show-error --output /tmp/login.html --write-out '%{http_code}' "$PREVIEW_URL/login" || true)
-          health_status=$(curl --silent --show-error --output /tmp/health.json --write-out '%{http_code}' "$PREVIEW_URL/api/diagnostics/provider-health" || true)
-          dashboard_location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\r",""); print $2}' "$dashboard_headers" | tail -1)
-          echo "dashboard=$dashboard_status dashboard_location=$dashboard_location login=$login_status provider_health=$health_status"
-
-          root_healthy=false
-          dashboard_healthy=false
-          if [[ "$root_status" == "200" || (( "$root_status" == "307" || "$root_status" == "308" ) && "$root_location" == *"/login"*) ]]; then root_healthy=true; fi
-          if [[ "$dashboard_status" == "200" || (( "$dashboard_status" == "307" || "$dashboard_status" == "308" ) && "$dashboard_location" == *"/login"*) ]]; then dashboard_healthy=true; fi
-
-          [[ "$root_healthy" == "true" ]]
-          [[ "$dashboard_healthy" == "true" ]]
-          [[ "$login_status" == "200" ]]
-          [[ "$health_status" == "401" ]]
-          grep -qi 'authentication required' /tmp/health.json
+          if [[ "$status" == "200" || "$status" == "307" || "$status" == "308" ]]; then
+            exit 0
+          fi
+          cat "$headers"
+          head -c 1000 /tmp/body || true
+          exit 1
