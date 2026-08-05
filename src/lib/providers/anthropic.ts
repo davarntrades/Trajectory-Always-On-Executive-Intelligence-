@@ -7,15 +7,7 @@ const NARRATIVE_SCHEMA = {
   properties: {
     todaysObjective: { type: "string", minLength: 8, maxLength: 420 },
     reasoning: { type: "string", minLength: 40, maxLength: 1200 },
-    recommendedAction: {
-      type: "object",
-      properties: {
-        title: { type: "string", minLength: 8, maxLength: 420 },
-        why: { type: "string", minLength: 20, maxLength: 600 },
-      },
-      required: ["title", "why"],
-      additionalProperties: false,
-    },
+    recommendedAction: { type: "object", properties: { title: { type: "string", minLength: 8, maxLength: 420 }, why: { type: "string", minLength: 20, maxLength: 600 } }, required: ["title", "why"], additionalProperties: false },
     currentObservation: { type: "string", minLength: 12, maxLength: 320 },
     currentConstraint: { type: "string", minLength: 8, maxLength: 240 },
     expectedImpact: { type: "string", minLength: 12, maxLength: 320 },
@@ -40,18 +32,11 @@ async function requestStructuredNarrative(request: ProviderRequest) {
   if (response.stop_reason === "refusal") throw new Error("Anthropic declined the request");
   const text = response.content.find((block) => block.type === "text");
   if (!text || text.type !== "text") throw new Error("Anthropic returned no structured narrative");
-  return {
-    narrative: ProviderNarrativeSchema.parse(JSON.parse(text.text)),
-    model: response.model,
-    requestId: (response as typeof response & { _request_id?: string })._request_id ?? null,
-  };
+  return { narrative: ProviderNarrativeSchema.parse(JSON.parse(text.text)), model: response.model, requestId: (response as typeof response & { _request_id?: string })._request_id ?? null };
 }
 
 export async function probeAnthropicProvider() {
-  const response = await requestStructuredNarrative({
-    systemPrompt: "Return a minimal valid Trajectory Executive Signal for a connectivity check. Do not include private data.",
-    prompt: "Return one concise signal confirming the provider path is available. Use confidence and urgency values between 0 and 1.",
-  });
+  const response = await requestStructuredNarrative({ systemPrompt: "Return a minimal valid Trajectory Executive Signal for a connectivity check. Do not include private data.", prompt: "Return one concise signal confirming the provider path is available. Use confidence and urgency values between 0 and 1." });
   return { ok: true as const, provider: "anthropic" as const, model: response.model, requestAttempted: true as const, httpStatus: 200, requestId: response.requestId, structuredValidationPassed: true as const };
 }
 
@@ -65,6 +50,6 @@ export const anthropicProvider: IntelligenceProvider = {
   isConfigured: () => Boolean(config.anthropicApiKey),
   async generate(request: ProviderRequest) {
     const response = await requestStructuredNarrative(request);
-    return { narrative: response.narrative, model: response.model };
+    return { narrative: response.narrative, model: response.model, requestId: response.requestId };
   },
 };
