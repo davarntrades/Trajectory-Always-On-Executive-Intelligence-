@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Sparkles } from "lucide-react";
+import { selectLoadingState, trajectoryLanguage as language } from "@/content/trajectory-language";
 import type { ProviderOption, ProviderPreference } from "@/lib/providers/types";
 import type { RiskLevel, TrajectoryDirection } from "@/lib/types";
 
@@ -13,22 +14,11 @@ export interface ExperienceState {
   bottleneck?: string;
   action?: { title: string; why: string };
   reasoning: string;
-  impact?: {
-    change: number;
-    horizonDays: number;
-    withinNoise: boolean;
-  };
+  impact?: { change: number; horizonDays: number; withinNoise: boolean };
 }
 
-type VoiceStatus = "idle" | "thinking" | "speaking" | "listening" | "unsupported";
-
-interface BriefResponse {
-  speech: string;
-  lines: string[];
-  provider: "anthropic" | "openai" | "gemini" | "grok" | "local" | "deterministic";
-  model: string | null;
-}
-
+type VoiceStatus = "idle" | "integrating" | "speaking" | "listening" | "unsupported";
+interface BriefResponse { speech: string; lines: string[]; provider: string; model: string | null }
 interface SpeechRecognitionLike extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
@@ -50,13 +40,6 @@ const supportsVoice = () => {
   return Boolean(browser.SpeechRecognition ?? browser.webkitSpeechRecognition);
 };
 
-const directionCopy: Record<TrajectoryDirection, string> = {
-  accelerating: "Your trajectory is strengthening.",
-  steady: "Your trajectory is holding steady.",
-  slipping: "Momentum is beginning to soften.",
-  stalled: "Your trajectory needs a deliberate reset.",
-};
-
 const lightTone: Record<RiskLevel, string> = {
   low: "positive",
   elevated: "attention",
@@ -64,30 +47,29 @@ const lightTone: Record<RiskLevel, string> = {
   critical: "critical",
 };
 
-function formatImpact(state: ExperienceState) {
-  const outlook = state.impact;
-  if (!outlook) return "Trajectory impact will be measured after the next state update.";
+const directionCopy: Record<TrajectoryDirection, string> = {
+  accelerating: language.trajectory.accelerating,
+  steady: language.trajectory.steady,
+  slipping: language.trajectory.slipping,
+  stalled: language.trajectory.stalled,
+};
 
-  const change = Math.round(outlook.change * 100);
-  if (outlook.withinNoise) {
-    return "The expected change is currently within the model’s noise floor.";
-  }
-
-  return `${change >= 0 ? "+" : ""}${change}% expected trajectory change over the next ${outlook.horizonDays} days.`;
+function expectedShift(state: ExperienceState) {
+  if (!state.impact) return language.trajectory.awaitingMeasurement;
+  if (state.impact.withinNoise) return language.trajectory.withinNoise;
+  return language.experience.expectedShift(
+    Math.round(state.impact.change * 100),
+    state.impact.horizonDays,
+  );
 }
 
-function concise(text: string, limit = 150) {
-  const firstThought = text.split(/(?<=[.!?])\s/)[0]?.trim() || text.trim();
-  if (firstThought.length <= limit) return firstThought;
-  return `${firstThought.slice(0, limit).replace(/\s+\S*$/, "")}…`;
+function concise(text: string, limit = 180) {
+  const firstSentence = text.split(/(?<=[.!?])\s/)[0]?.trim() || text.trim();
+  if (firstSentence.length <= limit) return firstSentence;
+  return `${firstSentence.slice(0, limit).replace(/\s+\S*$/, "")}…`;
 }
 
-export function TrajectoryExperience({
-  ownerName,
-  state,
-  providers,
-  defaultProvider,
-}: {
+export function TrajectoryExperience({ ownerName, state, providers, defaultProvider }: {
   ownerName: string;
   state: ExperienceState;
   providers: ProviderOption[];
@@ -99,6 +81,8 @@ export function TrajectoryExperience({
   const [briefLines, setBriefLines] = useState<string[]>([]);
   const [provider, setProvider] = useState<ProviderPreference>(defaultProvider);
   const [activeModel, setActiveModel] = useState<string | null>(null);
+  const [cycleLabel, setCycleLabel] = useState(language.loadingStates.integratingObservations);
+  const cycleRef = useRef(0);
   const orbRef = useRef<HTMLButtonElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptRef = useRef("");
@@ -107,7 +91,7 @@ export function TrajectoryExperience({
   const meterFrameRef = useRef<number | null>(null);
   const speechPulseRef = useRef<number | null>(null);
   const status = voiceSupported ? rawStatus : "unsupported";
-  const active = status === "thinking" || status === "listening" || status === "speaking";
+  const active = status === "integrating" || status === "listening" || status === "speaking";
 
   const chooseProvider = useCallback((next: ProviderPreference) => {
     setProvider(next);
@@ -124,16 +108,12 @@ export function TrajectoryExperience({
   }, []);
 
   const stopAudioMeter = useCallback(() => {
-    if (meterFrameRef.current !== null) {
-      window.cancelAnimationFrame(meterFrameRef.current);
-      meterFrameRef.current = null;
-    }
+    if (meterFrameRef.current !== null) window.cancelAnimationFrame(meterFrameRef.current);
+    meterFrameRef.current = null;
     audioStreamRef.current?.getTracks().forEach((track) => track.stop());
     audioStreamRef.current = null;
-    if (audioContextRef.current) {
-      void audioContextRef.current.close().catch(() => undefined);
-      audioContextRef.current = null;
-    }
+    if (audioContextRef.current) void audioContextRef.current.close().catch(() => undefined);
+    audioContextRef.current = null;
     resetOrbLevel();
   }, [resetOrbLevel]);
 
@@ -145,7 +125,6 @@ export function TrajectoryExperience({
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
-
       const context = new AudioContext();
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
@@ -154,7 +133,6 @@ export function TrajectoryExperience({
       const levels = new Uint8Array(analyser.frequencyBinCount);
       audioStreamRef.current = stream;
       audioContextRef.current = context;
-
       const sample = () => {
         analyser.getByteFrequencyData(levels);
         const average = levels.reduce((sum, level) => sum + level, 0) / levels.length;
@@ -170,21 +148,18 @@ export function TrajectoryExperience({
   }, [resetOrbLevel]);
 
   const deliverBrief = useCallback(async () => {
-    setStatus("thinking");
+    setCycleLabel(selectLoadingState(cycleRef.current++));
+    setStatus("integrating");
     try {
       const response = await fetch("/api/voice/brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: transcriptRef.current,
-          provider,
-        }),
+        body: JSON.stringify({ transcript: transcriptRef.current, provider }),
       });
-      if (!response.ok) throw new Error(`Briefing failed: ${response.status}`);
+      if (!response.ok) throw new Error(`voice brief ${response.status}`);
       const brief = (await response.json()) as BriefResponse;
       setBriefLines(brief.lines);
       setActiveModel(brief.model);
-
       const utterance = new SpeechSynthesisUtterance(brief.speech);
       utterance.lang = "en-GB";
       utterance.rate = 1.01;
@@ -205,7 +180,7 @@ export function TrajectoryExperience({
     } catch {
       resetOrbLevel();
       setStatus("idle");
-      setBriefLines(["Trajectory could not prepare the briefing. Please try again."]);
+      setBriefLines([language.voice.failure]);
     }
   }, [provider, resetOrbLevel]);
 
@@ -219,14 +194,7 @@ export function TrajectoryExperience({
     setStatus("idle");
   }, [stopAudioMeter]);
 
-  useEffect(() => () => {
-    transcriptRef.current = "";
-    window.speechSynthesis.cancel();
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    if (speechPulseRef.current) window.clearTimeout(speechPulseRef.current);
-    stopAudioMeter();
-  }, [stopAudioMeter]);
+  useEffect(() => () => stop(), [stop]);
 
   const listen = useCallback(() => {
     const browser = window as unknown as {
@@ -234,12 +202,10 @@ export function TrajectoryExperience({
       webkitSpeechRecognition?: new () => SpeechRecognitionLike;
     };
     const Recognition = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
-
     if (!Recognition) {
       setStatus("unsupported");
       return;
     }
-
     const recognition = new Recognition();
     recognition.continuous = false;
     recognition.interimResults = true;
@@ -256,11 +222,8 @@ export function TrajectoryExperience({
     recognition.onend = () => {
       recognitionRef.current = null;
       stopAudioMeter();
-      if (transcriptRef.current.trim()) {
-        void deliverBrief();
-      } else {
-        setStatus("idle");
-      }
+      if (transcriptRef.current.trim()) void deliverBrief();
+      else setStatus("idle");
     };
     recognition.onerror = () => {
       recognitionRef.current = null;
@@ -274,142 +237,77 @@ export function TrajectoryExperience({
   }, [deliverBrief, startAudioMeter, stopAudioMeter]);
 
   const action = state.action;
-  const reasoning = state.reasoning || action?.why ||
-    "Trajectory is observing the current signals and preserving the highest-leverage path.";
-  const statusLabel = status === "idle" ? "Observing quietly" :
-    status === "thinking" ? "A higher-leverage path is emerging" :
-    status === "speaking" ? "Trajectory is speaking" :
-    status === "listening" ? "Listening" : "Voice unavailable";
+  const trajectoryLogic = state.reasoning || action?.why || language.trajectory.preserveLeverage;
+  const statusLabel = status === "idle" ? language.status.observingQuietly
+    : status === "integrating" ? cycleLabel
+      : status === "speaking" ? language.status.speaking
+        : status === "listening" ? language.status.listening
+          : language.status.voiceUnavailable;
 
   return (
     <main className={`trajectory-experience light-${lightTone[state.riskLevel]} status-${status}`}>
       <div className="star-field" aria-hidden="true">
-        <div className="stars stars-near" />
-        <div className="stars stars-far" />
-        <div className="milky-way" />
-        <div className="cosmic-dust" />
-        <div className="nebula" />
-        <div className="distant-galaxy galaxy-one" />
-        <div className="distant-galaxy galaxy-two" />
-        <div className="shooting-star shooting-star-one" />
-        <div className="shooting-star shooting-star-two" />
+        <div className="stars stars-near" /><div className="stars stars-far" />
+        <div className="milky-way" /><div className="cosmic-dust" /><div className="nebula" />
+        <div className="distant-galaxy galaxy-one" /><div className="distant-galaxy galaxy-two" />
+        <div className="shooting-star shooting-star-one" /><div className="shooting-star shooting-star-two" />
       </div>
-
       <div className="edge-light" aria-hidden="true" />
 
       <header className="experience-header">
-        <a className="wordmark" href="#intelligence" aria-label="Trajectory home">
-          <span className="trajectory-mark" aria-hidden="true">
-            <span className="mark-core" />
-            <span className="mark-tail" />
-          </span>
-          <span>Trajectory</span>
-          <sup>©</sup>
+        <a className="wordmark" href="#intelligence" aria-label={language.brand.homeLabel}>
+          <span className="trajectory-mark" aria-hidden="true"><span className="mark-core" /><span className="mark-tail" /></span>
+          <span>{language.brand.name}</span><sup>©</sup>
         </a>
-
         <div className="header-controls">
           <label className="provider-setting">
-            <span className="sr-only">Intelligence provider</span>
-            <select
-              value={provider}
-              onChange={(event) => chooseProvider(event.target.value as ProviderPreference)}
-              aria-label="Intelligence provider"
-            >
-              <option value="auto">Auto</option>
+            <span className="sr-only">{language.brand.providerLabel}</span>
+            <select value={provider} onChange={(event) => chooseProvider(event.target.value as ProviderPreference)} aria-label={language.brand.providerLabel}>
+              <option value="auto">{language.brand.automaticProvider}</option>
               {providers.map((option) => (
                 <option key={option.id} value={option.id} disabled={!option.configured}>
-                  {option.label}{option.configured ? "" : " — unavailable"}
+                  {option.label}{option.configured ? "" : language.brand.unavailableSuffix}
                 </option>
               ))}
             </select>
           </label>
-          <div className="presence">
-            <span className="presence-dot" />
-            <span>{statusLabel}</span>
-          </div>
+          <div className="presence"><span className="presence-dot" /><span>{statusLabel}</span></div>
         </div>
       </header>
 
-      <section className="intelligence-stage" id="intelligence" aria-label="Trajectory intelligence">
-        <button
-          ref={orbRef}
-          type="button"
-          className={`orb-system is-${status}`}
-          onClick={active ? stop : listen}
-          disabled={status === "unsupported"}
-          aria-label={active ? "Stop voice interaction" : "Speak to Trajectory"}
-        >
-          <div className="watch-stream stream-one" />
-          <div className="watch-stream stream-two" />
-          <div className="orb-halo halo-one" />
-          <div className="orb-halo halo-two" />
-          <div className="speech-wave speech-wave-one" />
-          <div className="speech-wave speech-wave-two" />
-          <div className="orb-ring ring-one"><span /></div>
-          <div className="orb-ring ring-two"><span /></div>
-          <div className="trajectory-orb">
-            <div className="orb-atmosphere" />
-            <div className="orb-energy" />
-            <div className="orb-glass" />
-            <div className="orb-reflection" />
-          </div>
+      <section className="intelligence-stage" id="intelligence" aria-label={language.brand.intelligenceRegion}>
+        <button ref={orbRef} type="button" className={`orb-system is-${status}`} onClick={active ? stop : listen}
+          disabled={status === "unsupported"} aria-label={active ? language.voice.stopInteraction : language.voice.speakToTrajectory}>
+          <div className="watch-stream stream-one" /><div className="watch-stream stream-two" />
+          <div className="orb-halo halo-one" /><div className="orb-halo halo-two" />
+          <div className="speech-wave speech-wave-one" /><div className="speech-wave speech-wave-two" />
+          <div className="orb-ring ring-one"><span /></div><div className="orb-ring ring-two"><span /></div>
+          <div className="trajectory-orb"><div className="orb-atmosphere" /><div className="orb-energy" /><div className="orb-glass" /><div className="orb-reflection" /></div>
         </button>
-
         <div className="orb-copy" aria-live="polite">
-          <p className="orb-kicker">Persistent executive intelligence</p>
-          <h1>{status === "listening" ? "I’m listening." : `Good evening, ${ownerName}.`}</h1>
+          <p className="orb-kicker">{language.brand.descriptor}</p>
+          <h1>{status === "listening" ? language.voice.listening : language.experience.greeting(ownerName)}</h1>
           {status === "idle" || status === "unsupported" ? (
-            <div className="wake-dialogue">
-              <p>I’ve observed {state.meaningfulChanges} meaningful {state.meaningfulChanges === 1 ? "change" : "changes"} while you were away.</p>
-              <p>The highest-leverage action is ready.</p>
-            </div>
-          ) : (
-            <p className="live-voice-copy">
-              {transcript || (status === "thinking" ? "Understanding what matters." : statusLabel)}
-            </p>
-          )}
+            <div className="wake-dialogue"><p>{language.experience.meaningfulChanges(state.meaningfulChanges)}</p><p>{language.trajectory.leverageReady}</p></div>
+          ) : <p className="live-voice-copy">{transcript || statusLabel}</p>}
         </div>
-        <p className="interaction-hint">
-          {status === "unsupported" ? "Voice unavailable in this browser" : active ? "Tap the orb to stop" : "Tap the orb to speak"}
-        </p>
+        <p className="interaction-hint">{status === "unsupported" ? language.voice.unavailableInBrowser : active ? language.voice.tapToStop : language.voice.tapToSpeak}</p>
       </section>
 
       <section className="briefing-card" aria-labelledby="briefing-title">
-        <div className="card-eyebrow">
-          <span><Sparkles size={13} /> Executive signal</span>
-          <time dateTime={state.computedAt}>
-            {new Date(state.computedAt).toLocaleTimeString("en-GB", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </time>
+        <div className="card-eyebrow"><span><Sparkles size={13} /> {language.headings.executiveSignal}</span>
+          <time dateTime={state.computedAt}>{new Date(state.computedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</time>
         </div>
-
-        <div className="briefing-primary">
-          <p>Highest-leverage recommendation</p>
-          <h2 id="briefing-title">{action?.title ?? "Continue observing your trajectory"}</h2>
-        </div>
-
+        <div className="briefing-primary"><p>{language.headings.highestLeverageAction}</p><h2 id="briefing-title">{action?.title ?? language.trajectory.continueObserving}</h2></div>
         <div className="briefing-details">
-          <div>
-            <span>Current observation</span>
-            <p>{directionCopy[state.trajectory]} {state.bottleneck ? `The current constraint is ${state.bottleneck.toLowerCase()}.` : "No material constraint is blocking movement."}</p>
-          </div>
-          <div>
-            <span>Reasoning</span>
-            <p>{concise(briefLines[0] ?? reasoning)}</p>
-          </div>
-          <div>
-            <span>Expected impact</span>
-            <p>{formatImpact(state)}</p>
-          </div>
+          <div><span>{language.headings.currentState}</span><p>{directionCopy[state.trajectory]}</p></div>
+          <div><span>{language.headings.currentDynamics}</span><p>{state.bottleneck ? language.experience.currentConstraint(state.bottleneck) : language.trajectory.noConstraint}</p></div>
+          <div><span>{language.headings.expectedShift}</span><p>{expectedShift(state)}</p></div>
+          <div><span>{language.headings.trajectoryLogic}</span><p>{concise(trajectoryLogic)}</p></div>
         </div>
+        {briefLines.length > 0 ? <div className="briefing-response" aria-live="polite">{briefLines.map((line, index) => <p key={`${index}-${line}`}>{line}</p>)}</div> : null}
+        {activeModel ? <p className="model-footnote">{activeModel}</p> : null}
       </section>
-
-      <footer className="experience-footer">
-        <span>Live alongside your future.</span>
-        <span>{activeModel ? `${activeModel} · ` : ""}State updated {new Date(state.computedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-      </footer>
     </main>
   );
 }
