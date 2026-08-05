@@ -38,18 +38,32 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 40); do
-            root_status=$(curl --silent --show-error --output /tmp/root.html --write-out '%{http_code}' "$PREVIEW_URL/" || true)
+            root_headers=$(mktemp)
+            dashboard_headers=$(mktemp)
+            root_status=$(curl --silent --show-error --dump-header "$root_headers" --output /tmp/root.html --write-out '%{http_code}' "$PREVIEW_URL/" || true)
+            dashboard_status=$(curl --silent --show-error --dump-header "$dashboard_headers" --output /tmp/dashboard.html --write-out '%{http_code}' "$PREVIEW_URL/dashboard" || true)
             login_status=$(curl --silent --show-error --output /tmp/login.html --write-out '%{http_code}' "$PREVIEW_URL/login" || true)
             health_status=$(curl --silent --show-error --output /tmp/health.json --write-out '%{http_code}' "$PREVIEW_URL/api/diagnostics/provider-health" || true)
-            echo "attempt=$attempt root=$root_status login=$login_status provider_health=$health_status"
-            if [[ "$root_status" == "200" && "$login_status" == "200" && "$health_status" == "401" ]]; then
-              grep -q 'Authentication required' /tmp/health.json
+            root_location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\r",""); print $2}' "$root_headers" | tail -1)
+            dashboard_location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\r",""); print $2}' "$dashboard_headers" | tail -1)
+            echo "attempt=$attempt root=$root_status root_location=$root_location dashboard=$dashboard_status dashboard_location=$dashboard_location login=$login_status provider_health=$health_status"
+
+            root_healthy=false
+            dashboard_healthy=false
+            if [[ "$root_status" == "200" || (( "$root_status" == "307" || "$root_status" == "308" ) && "$root_location" == *"/login"*) ]]; then root_healthy=true; fi
+            if [[ "$dashboard_status" == "200" || (( "$dashboard_status" == "307" || "$dashboard_status" == "308" ) && "$dashboard_location" == *"/login"*) ]]; then dashboard_healthy=true; fi
+
+            if [[ "$root_healthy" == "true" && "$dashboard_healthy" == "true" && "$login_status" == "200" && "$health_status" == "401" ]]; then
+              grep -qi 'authentication required' /tmp/health.json
               exit 0
             fi
             sleep 15
           done
           echo 'Root response:'
           head -c 500 /tmp/root.html || true
+          echo
+          echo 'Dashboard response:'
+          head -c 500 /tmp/dashboard.html || true
           echo
           echo 'Login response:'
           head -c 500 /tmp/login.html || true
