@@ -46,7 +46,7 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
     await repository.appendMessage({ conversationId, role: "user", content: input.transcript, metadata: { channel: "voice", requestId: input.requestId, transcriptFingerprint: evidence.transcriptFingerprint } });
     const continuity = [checkInContext(morningCheckIn), `Personalisation: involvement ${profile.involvementLevel}; priority areas ${profile.priorityAreas.join(", ") || "not set"}.`, recentMessages.map((message) => `${message.role}: ${message.content}`).join("\n").slice(-8_000)].filter(Boolean).join("\n\n");
     const state = await computeState({ persist: true, provider: selectedProvider, userInput: input.transcript, conversationContext: continuity, ownerName: profile.displayName });
-    if (!state.provider || !state.model) { log("provider_failed", { ...evidence, selectedProvider, reason: "no_provider_result" }); throw new ProviderUnavailableError(selectedProvider === "auto" ? "auto" : selectedProvider); }
+    if (!state.provider || !state.model) { log("provider_failed", { ...evidence, selectedProvider, reason: "no_provider_result" }); if (selectedProvider !== "auto") throw new ProviderUnavailableError(selectedProvider); throw new Error("automatic provider unavailable"); }
     log("provider_completed", { ...evidence, provider: state.provider, model: state.model, latencyMs: Date.now() - startedAt });
     const top = state.signals.candidates[0]; const action = state.recommendedAction?.title ?? state.todaysObjective;
     let draft: z.infer<typeof SignalDraft>;
