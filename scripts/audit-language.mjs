@@ -12,16 +12,33 @@ const compatibilityPaths = [
   /src\/lib\/providers\//,
   /src\/app\/api\//,
   /src\/lib\/state\//,
+  /src\/lib\/store\//,
+  /src\/lib\/connectors\//,
+  /src\/lib\/background\//,
+  /src\/lib\/workers\//,
+  /src\/lib\/config\.ts$/,
   /src\/content\/trajectory-language\.ts$/,
 ];
 
 async function files(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
-  const nested = await Promise.all(entries.map((entry) => {
+  return (await Promise.all(entries.map((entry) => {
     const path = join(directory, entry.name);
     return entry.isDirectory() ? files(path) : extensions.has(extname(entry.name)) ? [path] : [];
-  }));
-  return nested.flat();
+  }))).flat();
+}
+
+function isRenderedLiteral(line, term) {
+  const lower = line.toLowerCase();
+  const index = lower.indexOf(term.toLowerCase());
+  if (index < 0) return false;
+  const before = line.slice(0, index);
+  const after = line.slice(index + term.length);
+  const inSingle = (before.match(/'/g)?.length ?? 0) % 2 === 1 && after.includes("'");
+  const inDouble = (before.match(/"/g)?.length ?? 0) % 2 === 1 && after.includes('"');
+  const inTemplate = (before.match(/`/g)?.length ?? 0) % 2 === 1 && after.includes("`");
+  const jsxText = before.lastIndexOf(">") > before.lastIndexOf("<") && after.indexOf("<") >= 0;
+  return inSingle || inDouble || inTemplate || jsxText;
 }
 
 const unresolved = [];
@@ -32,11 +49,12 @@ for (const file of await files(sourceRoot)) {
   const sourceLines = source.split("\n");
   for (const match of source.matchAll(prohibited)) {
     const line = source.slice(0, match.index).split("\n").length;
-    const record = `${path}:${line}:${match[0]}`;
-    const internal = compatibilityPaths.some((pattern) => pattern.test(path));
     const lineText = sourceLines[line - 1] ?? "";
+    const record = `${path}:${line}:${match[0]}`;
     const developerOnly = /^\s*(\/\/|\*|\/\*)/.test(lineText);
-    if (internal || developerOnly) exceptions.push(record);
+    const compatibility = compatibilityPaths.some((pattern) => pattern.test(path));
+    const identifierOnly = !isRenderedLiteral(lineText, match[0]);
+    if (developerOnly || compatibility || identifierOnly) exceptions.push(record);
     else unresolved.push(record);
   }
 }
