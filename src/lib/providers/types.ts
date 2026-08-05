@@ -53,9 +53,28 @@ export type ProviderCapability =
   | "structured_output"
   | "local_private";
 
+export class NoProviderConfiguredError extends Error {
+  constructor() {
+    super("No executive-reasoning provider is configured for this deployment");
+    this.name = "NoProviderConfiguredError";
+  }
+}
+
 export class ProviderUnavailableError extends Error {
   constructor(public readonly providerId: ProviderId) {
     super(`${providerId} is not configured`);
     this.name = "ProviderUnavailableError";
+  }
+}
+
+export class ProviderRequestError extends Error {
+  constructor(
+    public readonly providerId: ProviderId,
+    public readonly model: string,
+    public readonly causeName: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProviderRequestError";
   }
 }
