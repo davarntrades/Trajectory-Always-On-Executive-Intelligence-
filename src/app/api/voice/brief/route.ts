@@ -2,24 +2,30 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { trajectoryLanguage as language } from "@/content/trajectory-language";
-import { NoProviderConfiguredError, ProviderRequestError, ProviderUnavailableError, providerPreferences } from "@/lib/providers";
+import { NoProviderConfiguredError, ProviderRequestError, ProviderUnavailableError, providerOptions, providerPreferences, type ProviderPreference } from "@/lib/providers";
 import { computeState } from "@/lib/state/compute";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getWorkspaceRepository } from "@/lib/workspace/repository";
 import { checkInContext, getPersonalProfile, getTodayCheckIn } from "@/lib/personalization";
 import { persistExecutiveSignal } from "@/lib/executive-signals";
+import { providerRuntimeDiagnostics } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-const RequestBody = z.object({ transcript: z.string().trim().min(1).max(2000), provider: z.enum(providerPreferences), requestId: z.string().uuid() });
-const SignalDraft = z.object({
-  highestLeverageRecommendation: z.string().trim().min(8), currentObservation: z.string().trim().min(8), reasoning: z.string().trim().min(24), expectedImpact: z.string().trim().min(8), confidence: z.number().min(0).max(1), currentConstraint: z.string().trim().min(3), suggestedNextAction: z.string().trim().min(8), urgency: z.number().min(0).max(1), trajectory: z.enum(["accelerating", "steady", "slipping", "stalled"]), riskLevel: z.enum(["low", "elevated", "high", "critical"]),
-});
+const RequestBody = z.object({ transcript: z.string().trim().min(1).max(2000), provider: z.string().trim().min(1), requestId: z.string().uuid() });
+const SignalDraft = z.object({ highestLeverageRecommendation: z.string().trim().min(8), currentObservation: z.string().trim().min(8), reasoning: z.string().trim().min(24), expectedImpact: z.string().trim().min(8), confidence: z.number().min(0).max(1), currentConstraint: z.string().trim().min(3), suggestedNextAction: z.string().trim().min(8), urgency: z.number().min(0).max(1), trajectory: z.enum(["accelerating", "steady", "slipping", "stalled"]), riskLevel: z.enum(["low", "elevated", "high", "critical"]) });
 class StructuredSignalInvalidError extends Error { constructor(message = "Structured provider response was invalid") { super(message); this.name = "StructuredSignalInvalidError"; } }
 class SignalPersistenceError extends Error { constructor(message = "Executive Signal persistence failed") { super(message); this.name = "SignalPersistenceError"; } }
 
 const log = (event: string, detail: Record<string, unknown>) => console.info("[trajectory:voice-api]", { event, at: new Date().toISOString(), ...detail });
 const transcriptFingerprint = (value: string) => createHash("sha256").update(value.trim().toLowerCase()).digest("hex").slice(0, 16);
+function normalizeProvider(value: string): ProviderPreference {
+  const normalized = value.trim().toLowerCase().replace(/[_\s-]+/g, "");
+  const aliases: Record<string, ProviderPreference> = { automatic: "auto", auto: "auto", openai: "openai", anthropic: "anthropic", claude: "anthropic", gemini: "gemini", google: "gemini", grok: "grok", xai: "grok", local: "local" };
+  const provider = aliases[normalized];
+  if (!provider || !providerPreferences.includes(provider)) throw new Error("invalid provider identifier");
+  return provider;
+}
 function observation(direction: z.infer<typeof SignalDraft>["trajectory"]) { return direction === "accelerating" ? language.trajectory.accelerating : direction === "steady" ? language.trajectory.steady : direction === "slipping" ? language.trajectory.slipping : language.trajectory.stalled; }
 function impact(change: number | undefined, days: number | undefined, withinNoise: boolean | undefined) { if (change === undefined || days === undefined) return language.trajectory.awaitingMeasurement; if (withinNoise) return language.trajectory.withinNoise; return language.experience.expectedShift(Math.round(change * 100), days); }
 function wordSet(value: string) { return new Set(value.toLowerCase().match(/[a-z0-9]+/g) ?? []); }
@@ -50,11 +56,19 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
     if (!user) throw new Error("authentication required");
     log("route_reached", { ...evidence, userId: user.id });
     const profile = await getPersonalProfile(); const morningCheckIn = await getTodayCheckIn(profile); const settings = await repository.getSettings(); const recentMessages = await repository.recentMessages(16);
-    const selectedProvider = input.provider ?? profile.provider ?? settings.provider;
-    log("provider_selected", { ...evidence, userId: user.id, preference: selectedProvider });
+    const requestedProvider = input.provider || profile.provider || settings.provider;
+    const selectedProvider = normalizeProvider(requestedProvider);
+    const runtime = providerRuntimeDiagnostics(requestedProvider);
+    const eligibleProvider = providerOptions().find((option) => option.id === selectedProvider);
+    log("provider_environment", { ...evidence, userId: user.id, ...runtime, normalizedProvider: selectedProvider, providerCapabilityEligible: Boolean(eligibleProvider?.capabilities.includes("executive_reasoning")), providerConfigured: Boolean(eligibleProvider?.configured), providerRequestAttempted: false });
+    if (selectedProvider !== "auto" && (!eligibleProvider?.configured || !eligibleProvider.capabilities.includes("executive_reasoning"))) {
+      if (selectedProvider === "openai" && !runtime.openaiKeyPresent) throw new NoProviderConfiguredError();
+      throw new ProviderUnavailableError(selectedProvider);
+    }
     const conversation = await repository.createConversation(input.transcript.slice(0, 72), selectedProvider === "auto" ? undefined : selectedProvider); conversationId = conversation.id;
-    await repository.appendMessage({ conversationId, role: "user", content: input.transcript, metadata: { channel: "voice", requestId: input.requestId, transcriptFingerprint: evidence.transcriptFingerprint } });
+    await repository.appendMessage({ conversationId, role: "user", content: input.transcript, metadata: { channel: "voice", requestId: input.requestId, transcriptFingerprint: evidence.transcriptFingerprint, requestedProvider, normalizedProvider: selectedProvider } });
     const continuity = [checkInContext(morningCheckIn), `Personalisation: involvement ${profile.involvementLevel}; priority areas ${profile.priorityAreas.join(", ") || "not set"}.`, recentMessages.map((message) => `${message.role}: ${message.content}`).join("\n").slice(-8_000)].filter(Boolean).join("\n\n");
+    log("provider_request_starting", { ...evidence, requestedProvider, normalizedProvider: selectedProvider, resolvedModel: selectedProvider === "openai" ? runtime.resolvedModel : eligibleProvider?.model, providerRequestAttempted: true });
     const state = await computeState({ persist: true, provider: selectedProvider, userInput: input.transcript, conversationContext: continuity, ownerName: profile.displayName });
     if (!state.provider || !state.model) {
       log("provider_resolution_failed", { ...evidence, preference: selectedProvider, reason: selectedProvider === "auto" ? "no_configured_provider" : "requested_provider_unavailable" });
@@ -70,9 +84,8 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
     } catch (error) { log("structured_validation_failed", { ...evidence, reason: error instanceof Error ? error.name : "unknown" }); throw error instanceof StructuredSignalInvalidError ? error : new StructuredSignalInvalidError(); }
     const sourceFingerprint = createHash("sha256").update(JSON.stringify({ requestId: input.requestId, transcriptFingerprint: evidence.transcriptFingerprint, draft })).digest("hex");
     let persisted: Awaited<ReturnType<typeof persistExecutiveSignal>>;
-    try {
-      persisted = await persistExecutiveSignal({ requestId: input.requestId, highestLeverageRecommendation: draft.highestLeverageRecommendation, currentObservation: draft.currentObservation, reasoning: draft.reasoning, currentConstraint: draft.currentConstraint, confidence: draft.confidence, expectedImpact: state.outlook?.expectedTrajectoryChange ?? null, suggestedNextAction: draft.suggestedNextAction, urgency: draft.urgency, sourceFingerprint, provider: state.provider, model: state.model, morningCheckInId: morningCheckIn?.id });
-    } catch { throw new SignalPersistenceError(); }
+    try { persisted = await persistExecutiveSignal({ requestId: input.requestId, highestLeverageRecommendation: draft.highestLeverageRecommendation, currentObservation: draft.currentObservation, reasoning: draft.reasoning, currentConstraint: draft.currentConstraint, confidence: draft.confidence, expectedImpact: state.outlook?.expectedTrajectoryChange ?? null, suggestedNextAction: draft.suggestedNextAction, urgency: draft.urgency, sourceFingerprint, provider: state.provider, model: state.model, morningCheckInId: morningCheckIn?.id }); }
+    catch { throw new SignalPersistenceError(); }
     const signal = { id: persisted.id, computedAt: persisted.generated_at, ...draft }; const speech = speechFor(draft);
     await repository.appendMessage({ conversationId, role: "assistant", content: draft.reasoning, provider: state.provider, model: state.model, metadata: { channel: "voice", requestId: input.requestId, executiveSignalId: persisted.id, executiveSignal: signal } });
     await Promise.all([repository.recordVoice({ conversationId, transcript: input.transcript, responseText: speech, provider: state.provider, model: state.model, durationMs: Date.now() - startedAt, status: "completed" }), repository.recordTrajectory(state), repository.recordProviderUsage({ provider: state.provider, model: state.model, taskType: "voice-brief", latencyMs: Date.now() - startedAt, success: true })]);
