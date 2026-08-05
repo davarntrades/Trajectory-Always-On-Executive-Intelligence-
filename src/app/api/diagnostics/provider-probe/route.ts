@@ -51,7 +51,7 @@ function classifyOpenAIError(error: unknown): SafeProviderFailure {
     model: config.openaiModel,
     requestAttempted: true,
     httpStatus: status,
-    requestId: apiError?.request_id ?? null,
+    requestId: apiError?.requestID ?? null,
     errorClass: error instanceof Error ? error.name : "UnknownError",
     errorCode: code,
     errorType: type,
