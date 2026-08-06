@@ -274,12 +274,16 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
       setStatus("idle");
       return;
     }
+    // The retry press is itself a user gesture, which is the only moment iOS
+    // Safari will arm speech playback. Re-arming here keeps the spoken
+    // briefing working on a retry that follows a long pause.
+    unlockSpeech();
     submittedTranscriptRef.current = null;
     spokenRequestIdRef.current = null;
     setRecoverableError(null);
     diagnostic("retry_requested", { reusedTranscript: true });
     void submitTranscript();
-  }, [submitTranscript]);
+  }, [submitTranscript, unlockSpeech]);
 
   const finaliseListening = useCallback(() => {
     if (status !== "listening") return;

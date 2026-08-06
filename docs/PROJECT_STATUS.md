@@ -208,6 +208,11 @@ entries must not be removed.
   latent defect where the reasoning-state styling keyed off a `thinking` status
   the voice pipeline never emits, so that state previously had no visual
   treatment at all.
+- **Physical device acceptance (6 August 2026, iPhone Safari, production
+  deployment):** Cinematic motion, the speaking state and mobile layout were
+  confirmed on device. A long multi-section Executive Signal rendered with no
+  layout jump. Reduced-motion and the forced failure path remain verified in
+  desktop Chromium only.
 - **Verification status:** Language audit, ESLint, strict TypeScript, `node
   --test` and the Next.js production build all pass. The voice phase sequence
   (`idle → listening → integrating → speaking → settling → idle`) was driven
@@ -250,9 +255,26 @@ entries must not be removed.
   successful retry replaced the signal and cleared the stale marker. The
   displayed transcript renders as `Where is my trajectory today?` while the
   request payload carries the unaltered recognised text.
-- **Follow-up:** Re-test the failure and retry path on physical iPhone Safari,
-  then use the newly captured provider diagnostics to attribute the original
-  production failure.
+- **Physical device acceptance (6 August 2026, iPhone Safari, production
+  deployment):** A fresh voice request completed successfully at 15:36. The
+  Executive Signal was replaced and its timestamp advanced. The signal stated
+  that "PR7 and the mobile acceptance pass are delivered and superseded" and
+  recommended none of that completed work, confirming the supersession and
+  open-work grounding behave as designed against live data. Voice playback
+  occurred, the speaking state rendered correctly, a long multi-section signal
+  rendered without layout jump, and cinematic motion and mobile layout stayed
+  smooth. The provider-failure and retry path did not trigger during the run
+  and remains verified in Chromium only.
+- **Finding raised by the same run:** the signal reported an empty open-work
+  record and no platform activity in the preceding 24 hours. The reasoning
+  defect is fixed — Trajectory now reports the gap and recommends rebuilding
+  the backlog instead of recycling completed work — but the absence of tracked
+  open work is the underlying condition that made completed work the only
+  available material. Connector ingestion is what closes it.
+- **Follow-up:** Exercise the forced failure and retry path on a physical
+  device, use the newly captured provider diagnostics to attribute the original
+  production failure, and prioritise connector ingestion so the open-work
+  record is populated from live sources.
 
 ## Current Architecture
 
@@ -304,10 +326,18 @@ entries must not be removed.
   specified and have primitives available, but are not yet built into the
   product. Expected outcome: the full cinematic motion system rather than the
   home experience alone.
-- **Verify cinematic motion on physical iPhone Safari.** Confirm frame stability,
-  battery behaviour, safe-area insets and the reduced-motion path on device
-  rather than in desktop emulation. Expected outcome: signed-off mobile motion
-  performance.
+- **Populate the open-work record from live sources.** The 6 August device
+  acceptance surfaced an empty open-work record and no platform activity in the
+  preceding 24 hours, so Trajectory has no live evidence base to prioritise
+  against. Expected outcome: recommendations grounded in tracked work rather
+  than in the absence of it.
+- **Exercise the provider-failure and retry path on a physical device.** The
+  stale-signal label and same-transcript retry are verified in desktop
+  Chromium; the successful path is verified on device. Expected outcome:
+  device-confirmed recovery behaviour, including spoken playback on a retry.
+- **Verify reduced motion on physical iPhone Safari.** Frame stability, battery
+  behaviour and safe-area insets are confirmed on device; the reduced-motion
+  path is not. Expected outcome: signed-off accessibility behaviour on device.
 - **Carry the celestial atmosphere into authentication.** The login, signup and
   recovery surfaces still use the plain gradient shell rather than the starfield
   and nebula treatment described in Issue #8. Expected outcome: a consistent
@@ -492,16 +522,19 @@ Changelog entries are append-only.
 
 ## Next Recommended Milestone
 
-**Verify the cinematic motion system on a physical iPhone, then complete the
-remaining Issue #8 surfaces.**
+**Populate the open-work record from live sources.**
 
-The home experience now consumes the motion system end to end, but the splash,
-launch transition, Daily Summary atmosphere, refresh, success and notification
-states remain specified rather than built, and no device-level performance
-evidence exists yet. Device verification comes first because it constrains how
-much motion the remaining surfaces can afford.
+Device acceptance on 6 August proved the motion system, the voice pipeline and
+signal grounding all work against production. It also showed that the open-work
+record is empty and no platform activity has registered in 24 hours. Trajectory
+now reports that honestly instead of recycling completed work, but an executive
+intelligence with no tracked work has nothing to reason over — every downstream
+capability is bounded by this. Connector ingestion is the highest-leverage next
+step for that reason.
 
-**Then: open the production Auth acceptance path.**
+**Then: complete the remaining Issue #8 surfaces** — splash, launch transition,
+Daily Summary atmosphere, refresh, success and notification states — and **open
+the production Auth acceptance path.**
 
 Decide the Vercel Deployment Protection policy, configure production SMTP and
 safe email rate limits, then use a controlled mailbox to verify signup, email
