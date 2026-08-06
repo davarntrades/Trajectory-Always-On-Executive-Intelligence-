@@ -84,6 +84,8 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
   const submittedTranscriptRef = useRef<string | null>(null);
   const lastRequestIdRef = useRef<string | null>(null);
   const spokenRequestIdRef = useRef<string | null>(null);
+  const speechUnlockedRef = useRef(false);
+  const speechStartTimerRef = useRef<number | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptRef = useRef("");
   const finalTranscriptRef = useRef("");
@@ -137,6 +139,20 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
     } catch { resetOrbLevel(); }
   }, [resetOrbLevel]);
 
+  const unlockSpeech = useCallback(() => {
+    if (!("speechSynthesis" in window) || speechUnlockedRef.current) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.getVoices();
+    const primer = new SpeechSynthesisUtterance("\u200B");
+    primer.lang = "en-GB";
+    primer.volume = 0.01;
+    primer.rate = 10;
+    primer.onstart = () => { speechUnlockedRef.current = true; diagnostic("speech_unlocked", { method: "gesture_primer" }); };
+    primer.onend = () => { speechUnlockedRef.current = true; };
+    primer.onerror = () => { diagnostic("speech_unlock_failed"); };
+    window.speechSynthesis.speak(primer);
+  }, []);
+
   const speakOnce = useCallback((requestId: string, text: string) => {
     if (spokenRequestIdRef.current === requestId || !("speechSynthesis" in window)) { setStatus("idle"); return; }
     spokenRequestIdRef.current = requestId;
@@ -144,17 +160,48 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
     utterance.lang = "en-GB";
     utterance.rate = 1.01;
     utterance.pitch = 0.96;
-    utterance.onstart = () => { diagnostic("speech_started", { requestId, playbackCount: 1 }); setStatus("speaking"); };
+    const voices = window.speechSynthesis.getVoices();
+    const britishVoice = voices.find((voice) => voice.lang.toLowerCase() === "en-gb") ?? voices.find((voice) => voice.lang.toLowerCase().startsWith("en"));
+    if (britishVoice) utterance.voice = britishVoice;
+    let started = false;
+    utterance.onstart = () => {
+      started = true;
+      if (speechStartTimerRef.current !== null) window.clearTimeout(speechStartTimerRef.current);
+      diagnostic("speech_started", { requestId, playbackCount: 1, speechUnlocked: speechUnlockedRef.current });
+      setStatus("speaking");
+    };
     utterance.onboundary = () => {
       if (speechPulseRef.current) window.clearTimeout(speechPulseRef.current);
       orbRef.current?.style.setProperty("--voice-scale", "1.065");
       orbRef.current?.style.setProperty("--voice-brightness", "1.35");
       speechPulseRef.current = window.setTimeout(resetOrbLevel, 130);
     };
-    utterance.onend = () => { diagnostic("speech_completed", { requestId, playbackCount: 1 }); resetOrbLevel(); setStatus("idle"); };
-    utterance.onerror = () => { diagnostic("speech_failed", { requestId, playbackCount: 0 }); resetOrbLevel(); setStatus("idle"); };
-    window.speechSynthesis.cancel();
+    utterance.onend = () => {
+      if (speechStartTimerRef.current !== null) window.clearTimeout(speechStartTimerRef.current);
+      diagnostic("speech_completed", { requestId, playbackCount: 1 });
+      resetOrbLevel();
+      setStatus("idle");
+    };
+    utterance.onerror = (event) => {
+      if (speechStartTimerRef.current !== null) window.clearTimeout(speechStartTimerRef.current);
+      diagnostic("speech_failed", { requestId, playbackCount: 0, error: event.error ?? "unknown" });
+      resetOrbLevel();
+      setRecoverableError("The signal is ready, but Safari blocked voice playback. Tap Try again to hear it.");
+      setStatus("failure");
+      spokenRequestIdRef.current = null;
+    };
+    diagnostic("speech_queued", { requestId, speechUnlocked: speechUnlockedRef.current, voiceAvailable: Boolean(britishVoice) });
+    window.speechSynthesis.resume();
     window.speechSynthesis.speak(utterance);
+    speechStartTimerRef.current = window.setTimeout(() => {
+      if (!started && spokenRequestIdRef.current === requestId) {
+        diagnostic("speech_start_timeout", { requestId, playbackCount: 0 });
+        window.speechSynthesis.cancel();
+        spokenRequestIdRef.current = null;
+        setRecoverableError("The signal is ready, but Safari blocked voice playback. Tap Try again to hear it.");
+        setStatus("failure");
+      }
+    }, 1800);
   }, [resetOrbLevel]);
 
   const submitTranscript = useCallback(async () => {
@@ -214,13 +261,19 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
     stopAudioMeter();
     setStatus("idle");
   }, [stopAudioMeter]);
-  useEffect(() => () => { window.speechSynthesis.cancel(); recognitionRef.current?.abort?.(); stopAudioMeter(); }, [stopAudioMeter]);
+  useEffect(() => () => {
+    if (speechStartTimerRef.current !== null) window.clearTimeout(speechStartTimerRef.current);
+    window.speechSynthesis.cancel();
+    recognitionRef.current?.abort?.();
+    stopAudioMeter();
+  }, [stopAudioMeter]);
 
   const listen = useCallback(() => {
     if (requestInFlightRef.current) return;
     const browser = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
     const Recognition = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
     if (!Recognition) { setStatus("unsupported"); return; }
+    unlockSpeech();
     setRecoverableError(null);
     submittedTranscriptRef.current = null;
     stopRequestedRef.current = false;
@@ -232,7 +285,6 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
     recognition.interimResults = true;
     recognition.lang = "en-GB";
     recognition.onresult = (event) => {
-      window.speechSynthesis.cancel();
       let combined = "";
       let final = "";
       for (let index = 0; index < event.results.length; index += 1) {
@@ -265,7 +317,7 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
     recognition.start();
     void startAudioMeter();
     setStatus("listening");
-  }, [startAudioMeter, stopAudioMeter, submitTranscript]);
+  }, [startAudioMeter, stopAudioMeter, submitTranscript, unlockSpeech]);
 
   const displayedAction = signal?.highestLeverageRecommendation ?? state.action?.title ?? language.trajectory.continueObserving;
   const displayedState = signal?.currentObservation ?? directionCopy[state.trajectory];
@@ -278,20 +330,27 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
   const onOrbClick = status === "listening" ? finaliseListening : status === "speaking" ? cancelActive : active ? undefined : listen;
   const interactionHint = status === "unsupported" ? language.voice.unavailableInBrowser : status === "listening" ? language.voice.tapToStop : active ? null : language.voice.tapToSpeak;
 
-  return <main className={`trajectory-experience light-${lightTone[displayedRisk]} status-${status}`}>
-    <div className="star-field" aria-hidden="true"><div className="stars stars-near" /><div className="stars stars-far" /><div className="milky-way" /><div className="cosmic-dust" /><div className="nebula" /><div className="distant-galaxy galaxy-one" /><div className="distant-galaxy galaxy-two" /><div className="shooting-star shooting-star-one" /><div className="shooting-star shooting-star-two" /></div>
-    <div className="edge-light" aria-hidden="true" />
-    <header className="experience-header"><a className="wordmark" href="#intelligence" aria-label={language.brand.homeLabel}><span className="trajectory-mark" aria-hidden="true"><span className="mark-core" /><span className="mark-tail" /></span><span>{language.brand.name}</span><sup>©</sup></a><div className="header-controls"><label className="provider-setting"><span className="sr-only">{language.brand.providerLabel}</span><select value={provider} onChange={(event) => chooseProvider(event.target.value as ProviderPreference)} aria-label={language.brand.providerLabel}><option value="auto">{language.brand.automaticProvider}</option>{providers.map((option) => <option key={option.id} value={option.id} disabled={!option.configured}>{option.label}{option.configured ? "" : language.brand.unavailableSuffix}</option>)}</select></label><div className="presence"><span className="presence-dot" /><span>{statusLabel}</span></div></div></header>
-    <section className="intelligence-stage" id="intelligence" aria-label={language.brand.intelligenceRegion}>
-      <button ref={orbRef} type="button" className={`orb-system is-${status}`} onClick={onOrbClick} disabled={status === "unsupported" || (active && status !== "listening" && status !== "speaking")} aria-label={status === "listening" ? language.voice.stopInteraction : language.voice.speakToTrajectory}><div className="watch-stream stream-one" /><div className="watch-stream stream-two" /><div className="orb-halo halo-one" /><div className="orb-halo halo-two" /><div className="speech-wave speech-wave-one" /><div className="speech-wave speech-wave-two" /><div className="orb-ring ring-one"><span /></div><div className="orb-ring ring-two"><span /></div><div className="trajectory-orb"><div className="orb-atmosphere" /><div className="orb-energy" /><div className="orb-glass" /><div className="orb-reflection" /></div></button>
-      <div className="orb-copy" aria-live="polite"><p className="orb-kicker">{language.brand.descriptor}</p><h1>{status === "listening" ? language.voice.listening : language.experience.greeting(ownerName)}</h1>{["idle", "unsupported", "failure"].includes(status) ? <div className="wake-dialogue"><p>{language.experience.meaningfulChanges(state.meaningfulChanges)}</p><p>{language.trajectory.leverageReady}</p></div> : <p className="live-voice-copy">{transcript || statusLabel}</p>}</div>
-      {interactionHint ? <p className="interaction-hint">{interactionHint}</p> : null}
-      {status === "failure" && recoverableError ? <button type="button" className="voice-error" onClick={() => { setRecoverableError(null); setStatus("idle"); }}>{recoverableError} · Try again</button> : null}
-    </section>
-    <section className={`briefing-card${signal ? " signal-updated" : ""}`} aria-labelledby="briefing-title" aria-live="polite">
-      <div className="card-eyebrow"><span><Sparkles size={13} /> {language.headings.executiveSignal}</span><time dateTime={displayedTime}>{new Date(displayedTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</time></div>
-      <div className="briefing-primary"><p>{language.headings.highestLeverageAction}</p><h2 id="briefing-title">{displayedAction}</h2></div>
-      <div className="briefing-details"><div><span>{language.headings.currentState}</span><p>{displayedState}</p></div><div><span>{language.headings.currentDynamics}</span><p>{displayedConstraint}</p></div><div><span>{language.headings.expectedShift}</span><p>{displayedImpact}</p></div><div><span>{language.headings.trajectoryLogic}</span><p>{displayedReasoning}</p></div>{signal ? <><div><span>Confidence</span><p>{Math.round(signal.confidence * 100)}%</p></div><div><span>Urgency</span><p>{Math.round(signal.urgency * 100)}%</p></div><div><span>Suggested next action</span><p>{signal.suggestedNextAction}</p></div></> : null}</div>
-    </section>
-  </main>;
+  return (
+    <main className={`trajectory-experience light-${lightTone[displayedRisk]} status-${status}`}>
+      <div className="star-field" aria-hidden="true"><div className="stars stars-near" /><div className="stars stars-far" /><div className="milky-way" /><div className="cosmic-dust" /><div className="nebula" /><div className="distant-galaxy galaxy-one" /><div className="distant-galaxy galaxy-two" /><div className="shooting-star shooting-star-one" /><div className="shooting-star shooting-star-two" /></div>
+      <div className="edge-light" aria-hidden="true" />
+      <header className="experience-header">
+        <a className="wordmark" href="#intelligence" aria-label={language.brand.homeLabel}><span className="trajectory-mark" aria-hidden="true"><span className="mark-core" /><span className="mark-tail" /></span><span>{language.brand.name}</span><sup>©</sup></a>
+        <div className="header-controls"><label className="provider-setting"><span className="sr-only">{language.brand.providerLabel}</span><select value={provider} onChange={(event) => chooseProvider(event.target.value as ProviderPreference)} aria-label={language.brand.providerLabel}><option value="auto">{language.brand.automaticProvider}</option>{providers.map((option) => <option key={option.id} value={option.id} disabled={!option.configured}>{option.label}{option.configured ? "" : language.brand.unavailableSuffix}</option>)}</select></label><div className="presence"><span className="presence-dot" /><span>{statusLabel}</span></div></div>
+      </header>
+      <section className="intelligence-stage" id="intelligence" aria-label={language.brand.intelligenceRegion}>
+        <button ref={orbRef} type="button" className={`orb-system is-${status}`} onClick={onOrbClick} disabled={status === "unsupported" || (active && status !== "listening" && status !== "speaking")} aria-label={status === "listening" ? language.voice.stopInteraction : language.voice.speakToTrajectory}>
+          <div className="watch-stream stream-one" /><div className="watch-stream stream-two" /><div className="orb-halo halo-one" /><div className="orb-halo halo-two" /><div className="speech-wave speech-wave-one" /><div className="speech-wave speech-wave-two" /><div className="orb-ring ring-one"><span /></div><div className="orb-ring ring-two"><span /></div><div className="trajectory-orb"><div className="orb-atmosphere" /><div className="orb-energy" /><div className="orb-glass" /><div className="orb-reflection" /></div>
+        </button>
+        <div className="orb-copy" aria-live="polite"><p className="orb-kicker">{language.brand.descriptor}</p><h1>{status === "listening" ? language.voice.listening : language.experience.greeting(ownerName)}</h1>{["idle", "unsupported", "failure"].includes(status) ? <div className="wake-dialogue"><p>{language.experience.meaningfulChanges(state.meaningfulChanges)}</p><p>{language.trajectory.leverageReady}</p></div> : <p className="live-voice-copy">{transcript || statusLabel}</p>}</div>
+        {interactionHint ? <p className="interaction-hint">{interactionHint}</p> : null}
+        {recoverableError ? <button type="button" className="voice-error" onClick={() => { setRecoverableError(null); setStatus("idle"); }}>{recoverableError} · Try again</button> : null}
+      </section>
+      <section className={`briefing-card${signal ? " signal-updated" : ""}`} aria-labelledby="briefing-title" aria-live="polite">
+        <div className="card-eyebrow"><span><Sparkles size={13} /> {language.headings.executiveSignal}</span><time dateTime={displayedTime}>{new Date(displayedTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</time></div>
+        <div className="briefing-primary"><p>{language.headings.highestLeverageAction}</p><h2 id="briefing-title">{displayedAction}</h2></div>
+        <div className="briefing-details"><div><span>{language.headings.currentState}</span><p>{displayedState}</p></div><div><span>{language.headings.currentDynamics}</span><p>{displayedConstraint}</p></div><div><span>{language.headings.expectedShift}</span><p>{displayedImpact}</p></div><div><span>{language.headings.trajectoryLogic}</span><p>{displayedReasoning}</p></div>{signal ? <><div><span>Confidence</span><p>{Math.round(signal.confidence * 100)}%</p></div><div><span>Urgency</span><p>{Math.round(signal.urgency * 100)}%</p></div><div><span>Suggested next action</span><p>{signal.suggestedNextAction}</p></div></> : null}</div>
+      </section>
+    </main>
+  );
 }
