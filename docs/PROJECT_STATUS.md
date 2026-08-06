@@ -3,7 +3,7 @@
 > Authoritative living record of Trajectory's product progress, engineering
 > milestones, verification history and next recommended milestone.
 >
-> Last updated: 5 August 2026
+> Last updated: 6 August 2026
 
 ## Vision
 
@@ -100,6 +100,24 @@ Protection currently requires a Vercel session before requests reach the app.
 - Changed input creates a state snapshot, trajectory history, daily brief,
   provider usage record and Executive Signal.
 
+### Cinematic motion and visual identity
+
+- Shared motion tokens in `src/content/trajectory-motion.ts` govern duration,
+  easing, ambient cadence, voice-orb phases and reduced-motion alternatives.
+- Reusable celestial primitives in
+  `src/components/trajectory/celestial-motion.tsx`: the Trajectory shooting-star
+  mark, ambient crossings, the Executive Signal crossing, a celestial loader and
+  a constellation success state.
+- The shooting-star mark is the sole symbol in the header lockup and beside
+  Executive Signal; no generic sparkle or icon-library glyph remains in the
+  primary experience.
+- The voice orb is enhanced, not replaced, across idle, listening, integrating,
+  speaking and settling phases.
+- Ambient crossings run on randomised 20–40 second intervals and stop entirely
+  when the page is hidden or reduced motion is requested.
+- `prefers-reduced-motion` is honoured globally, and no state is communicated by
+  motion alone.
+
 ## Completed Milestones
 
 Completed milestones are append-only. Corrections may be added, but historical
@@ -168,6 +186,39 @@ entries must not be removed.
   strict TypeScript and Next.js production build passed; Vercel production
   deployment reached Ready.
 
+### 6 August 2026 — Cinematic motion integration and visual identity
+
+- **Version or PR:** Branch `agent/cinematic-motion-integration`, continuing
+  Issue #8 on top of the merged motion foundation.
+- **Summary:** Connected the previously merged motion tokens and celestial
+  primitives to the live Trajectory experience, made the approved shooting star
+  the product's only symbol, and gave the existing voice orb a full phase
+  vocabulary without replacing it.
+- **Key achievements:** Replaced the Lucide sparkle beside Executive Signal with
+  the Trajectory shooting-star mark and recoloured the mark to the approved
+  white luminous treatment; converted the two fixed-loop CSS shooting stars into
+  a single randomised 20–40 second ambient crossing with randomised origin,
+  length, angle and travel; added idle, listening, integrating, speaking and
+  settling orb phases driven by the real voice status, including internal light
+  circulation in place of a spinner; added a three-stage Executive Signal
+  transition that fades the previous recommendation, crosses the card with a
+  shooting star and fades the replacement in behind a locked body height;
+  suspended ambient motion when the page is hidden or unfocused; broadened
+  `prefers-reduced-motion` handling to cover the new primitives. Repaired a
+  latent defect where the reasoning-state styling keyed off a `thinking` status
+  the voice pipeline never emits, so that state previously had no visual
+  treatment at all.
+- **Verification status:** Language audit, ESLint, strict TypeScript, `node
+  --test` and the Next.js production build all pass. The voice phase sequence
+  (`idle → listening → integrating → speaking → settling → idle`) was driven
+  end to end in Chromium against the real component state machine. The
+  Executive Signal transition was traced through all three stages with the body
+  height held at the previous value across the swap. Ambient crossings were
+  observed over 130 seconds at 34.7 s, 37.6 s and 24.9 s spacing, with zero
+  crossings under reduced motion and zero after the page was hidden. Reduced
+  motion and a 390 × 844 mobile viewport were captured. Physical iPhone Safari
+  verification is still outstanding.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
@@ -212,6 +263,20 @@ entries must not be removed.
 
 ### High
 
+- **Complete the remaining Issue #8 motion surfaces.** The splash sequence,
+  icon-to-app launch transition, Daily Summary atmospheric states, pull to
+  refresh, constellation success and in-app notification transitions are
+  specified and have primitives available, but are not yet built into the
+  product. Expected outcome: the full cinematic motion system rather than the
+  home experience alone.
+- **Verify cinematic motion on physical iPhone Safari.** Confirm frame stability,
+  battery behaviour, safe-area insets and the reduced-motion path on device
+  rather than in desktop emulation. Expected outcome: signed-off mobile motion
+  performance.
+- **Carry the celestial atmosphere into authentication.** The login, signup and
+  recovery surfaces still use the plain gradient shell rather than the starfield
+  and nebula treatment described in Issue #8. Expected outcome: a consistent
+  Trajectory atmosphere before sign-in.
 - **Configure Google OAuth.** Register production/preview domains in Google Cloud
   and Supabase Auth. Expected outcome: Google account creation and sign-in.
 - **Configure Apple Sign In.** Provision the Apple Services ID, signing key and
@@ -330,6 +395,26 @@ Changelog entries are append-only.
 - **Follow-up:** Configure production SMTP/rate limits and decide whether
   Vercel-authenticated private access should remain in front of Supabase Auth.
 
+### 6 August 2026 — Cinematic motion integration
+
+- **What changed:** Wired the merged motion tokens and celestial primitives into
+  the live experience, replaced the Executive Signal sparkle with the approved
+  shooting-star mark, randomised the ambient crossing cadence, gave the existing
+  voice orb five interaction phases, added a non-abrupt Executive Signal
+  transition, suspended ambient motion on hidden pages and extended
+  reduced-motion coverage.
+- **Why:** The motion foundation existed but nothing in the running product
+  consumed it, and the reasoning state had no visual treatment because its CSS
+  keyed off a status the voice pipeline never emits.
+- **Verification performed:** Language audit, lint, strict TypeScript, tests and
+  the production build passed. The voice phase sequence, the three-stage signal
+  transition with its height lock, the randomised ambient cadence, the
+  hidden-page pause and reduced-motion suppression were each exercised in a real
+  browser; evidence is in `docs/motion/`.
+- **Follow-up:** Verify on physical iPhone Safari, then carry the same motion
+  language into the splash and launch transition, Daily Summary atmosphere,
+  pull-to-refresh, success and notification states from Issue #8.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -354,7 +439,16 @@ Changelog entries are append-only.
 
 ## Next Recommended Milestone
 
-**Open the production Auth acceptance path.**
+**Verify the cinematic motion system on a physical iPhone, then complete the
+remaining Issue #8 surfaces.**
+
+The home experience now consumes the motion system end to end, but the splash,
+launch transition, Daily Summary atmosphere, refresh, success and notification
+states remain specified rather than built, and no device-level performance
+evidence exists yet. Device verification comes first because it constrains how
+much motion the remaining surfaces can afford.
+
+**Then: open the production Auth acceptance path.**
 
 Decide the Vercel Deployment Protection policy, configure production SMTP and
 safe email rate limits, then use a controlled mailbox to verify signup, email

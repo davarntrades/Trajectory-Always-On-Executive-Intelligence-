@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Sparkles } from "lucide-react";
 import { selectLoadingState, trajectoryLanguage as language } from "@/content/trajectory-language";
+import {
+  AmbientShootingStar,
+  SignalCrossing,
+  TrajectoryMark,
+  useOrbPhase,
+  usePageActive,
+  usePrefersReducedMotion,
+  useSignalTransition,
+} from "@/components/trajectory/celestial-motion";
 import type { ProviderOption, ProviderPreference } from "@/lib/providers/types";
 import type { ExecutiveSignalResponse } from "@/lib/executive-signals";
 import type { RiskLevel, TrajectoryDirection } from "@/lib/types";
@@ -98,6 +106,10 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
 
   const status = voiceSupported ? rawStatus : "unsupported";
   const active = !["idle", "failure", "unsupported"].includes(status);
+  const orbPhase = useOrbPhase(status);
+  const reducedMotion = usePrefersReducedMotion();
+  const pageActive = usePageActive();
+  const { displayed: displayedSignal, stage: signalStage, lockedHeight, bodyRef, crossing } = useSignalTransition(signal);
   const chooseProvider = useCallback((next: ProviderPreference) => {
     setProvider(next);
     void fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: next }) }).catch(() => undefined);
@@ -319,37 +331,45 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
     setStatus("listening");
   }, [startAudioMeter, stopAudioMeter, submitTranscript, unlockSpeech]);
 
-  const displayedAction = signal?.highestLeverageRecommendation ?? state.action?.title ?? language.trajectory.continueObserving;
-  const displayedState = signal?.currentObservation ?? directionCopy[state.trajectory];
-  const displayedConstraint = signal?.currentConstraint ?? (state.bottleneck ? language.experience.currentConstraint(state.bottleneck) : language.trajectory.noConstraint);
-  const displayedImpact = signal?.expectedImpact ?? expectedShift(state);
-  const displayedReasoning = signal?.reasoning ?? state.reasoning ?? state.action?.why ?? language.trajectory.preserveLeverage;
-  const displayedTime = signal?.computedAt ?? state.computedAt;
-  const displayedRisk = signal?.riskLevel ?? state.riskLevel;
+  const displayedAction = displayedSignal?.highestLeverageRecommendation ?? state.action?.title ?? language.trajectory.continueObserving;
+  const displayedState = displayedSignal?.currentObservation ?? directionCopy[state.trajectory];
+  const displayedConstraint = displayedSignal?.currentConstraint ?? (state.bottleneck ? language.experience.currentConstraint(state.bottleneck) : language.trajectory.noConstraint);
+  const displayedImpact = displayedSignal?.expectedImpact ?? expectedShift(state);
+  const displayedReasoning = displayedSignal?.reasoning ?? state.reasoning ?? state.action?.why ?? language.trajectory.preserveLeverage;
+  const displayedTime = displayedSignal?.computedAt ?? state.computedAt;
+  const displayedRisk = displayedSignal?.riskLevel ?? state.riskLevel;
   const statusLabel = status === "idle" ? language.status.observingQuietly : status === "listening" ? language.status.listening : status === "speaking" ? language.status.speaking : status === "failure" ? language.voice.failure : status === "unsupported" ? language.status.voiceUnavailable : cycleLabel;
   const onOrbClick = status === "listening" ? finaliseListening : status === "speaking" ? cancelActive : active ? undefined : listen;
   const interactionHint = status === "unsupported" ? language.voice.unavailableInBrowser : status === "listening" ? language.voice.tapToStop : active ? null : language.voice.tapToSpeak;
 
   return (
-    <main className={`trajectory-experience light-${lightTone[displayedRisk]} status-${status}`}>
-      <div className="star-field" aria-hidden="true"><div className="stars stars-near" /><div className="stars stars-far" /><div className="milky-way" /><div className="cosmic-dust" /><div className="nebula" /><div className="distant-galaxy galaxy-one" /><div className="distant-galaxy galaxy-two" /><div className="shooting-star shooting-star-one" /><div className="shooting-star shooting-star-two" /></div>
+    <main
+      className={`trajectory-experience light-${lightTone[displayedRisk]} status-${status}`}
+      data-phase={orbPhase}
+      data-ambient={pageActive ? "live" : "paused"}
+      data-motion={reducedMotion ? "reduced" : "full"}
+    >
+      <div className="star-field" aria-hidden="true"><div className="stars stars-near" /><div className="stars stars-far" /><div className="milky-way" /><div className="cosmic-dust" /><div className="nebula" /><div className="distant-galaxy galaxy-one" /><div className="distant-galaxy galaxy-two" /><AmbientShootingStar /></div>
       <div className="edge-light" aria-hidden="true" />
       <header className="experience-header">
-        <a className="wordmark" href="#intelligence" aria-label={language.brand.homeLabel}><span className="trajectory-mark" aria-hidden="true"><span className="mark-core" /><span className="mark-tail" /></span><span>{language.brand.name}</span><sup>©</sup></a>
+        <a className="wordmark" href="#intelligence" aria-label={language.brand.homeLabel}><TrajectoryMark /><span>{language.brand.name}</span><sup>©</sup></a>
         <div className="header-controls"><label className="provider-setting"><span className="sr-only">{language.brand.providerLabel}</span><select value={provider} onChange={(event) => chooseProvider(event.target.value as ProviderPreference)} aria-label={language.brand.providerLabel}><option value="auto">{language.brand.automaticProvider}</option>{providers.map((option) => <option key={option.id} value={option.id} disabled={!option.configured}>{option.label}{option.configured ? "" : language.brand.unavailableSuffix}</option>)}</select></label><div className="presence"><span className="presence-dot" /><span>{statusLabel}</span></div></div>
       </header>
       <section className="intelligence-stage" id="intelligence" aria-label={language.brand.intelligenceRegion}>
-        <button ref={orbRef} type="button" className={`orb-system is-${status}`} onClick={onOrbClick} disabled={status === "unsupported" || (active && status !== "listening" && status !== "speaking")} aria-label={status === "listening" ? language.voice.stopInteraction : language.voice.speakToTrajectory}>
-          <div className="watch-stream stream-one" /><div className="watch-stream stream-two" /><div className="orb-halo halo-one" /><div className="orb-halo halo-two" /><div className="speech-wave speech-wave-one" /><div className="speech-wave speech-wave-two" /><div className="orb-ring ring-one"><span /></div><div className="orb-ring ring-two"><span /></div><div className="trajectory-orb"><div className="orb-atmosphere" /><div className="orb-energy" /><div className="orb-glass" /><div className="orb-reflection" /></div>
+        <button ref={orbRef} type="button" className={`orb-system is-${status}`} data-phase={orbPhase} onClick={onOrbClick} disabled={status === "unsupported" || (active && status !== "listening" && status !== "speaking")} aria-label={status === "listening" ? language.voice.stopInteraction : language.voice.speakToTrajectory}>
+          <div className="orb-passing-star" aria-hidden="true" /><div className="watch-stream stream-one" /><div className="watch-stream stream-two" /><div className="orb-halo halo-one" /><div className="orb-halo halo-two" /><div className="speech-wave speech-wave-one" /><div className="speech-wave speech-wave-two" /><div className="orb-ring ring-one"><span /></div><div className="orb-ring ring-two"><span /></div><div className="trajectory-orb"><div className="orb-atmosphere" /><div className="orb-energy" /><div className="orb-circulation" /><div className="orb-glass" /><div className="orb-reflection" /></div>
         </button>
         <div className="orb-copy" aria-live="polite"><p className="orb-kicker">{language.brand.descriptor}</p><h1>{status === "listening" ? language.voice.listening : language.experience.greeting(ownerName)}</h1>{["idle", "unsupported", "failure"].includes(status) ? <div className="wake-dialogue"><p>{language.experience.meaningfulChanges(state.meaningfulChanges)}</p><p>{language.trajectory.leverageReady}</p></div> : <p className="live-voice-copy">{transcript || statusLabel}</p>}</div>
         {interactionHint ? <p className="interaction-hint">{interactionHint}</p> : null}
         {recoverableError ? <button type="button" className="voice-error" onClick={() => { setRecoverableError(null); setStatus("idle"); }}>{recoverableError} · Try again</button> : null}
       </section>
-      <section className={`briefing-card${signal ? " signal-updated" : ""}`} aria-labelledby="briefing-title" aria-live="polite">
-        <div className="card-eyebrow"><span><Sparkles size={13} /> {language.headings.executiveSignal}</span><time dateTime={displayedTime}>{new Date(displayedTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</time></div>
-        <div className="briefing-primary"><p>{language.headings.highestLeverageAction}</p><h2 id="briefing-title">{displayedAction}</h2></div>
-        <div className="briefing-details"><div><span>{language.headings.currentState}</span><p>{displayedState}</p></div><div><span>{language.headings.currentDynamics}</span><p>{displayedConstraint}</p></div><div><span>{language.headings.expectedShift}</span><p>{displayedImpact}</p></div><div><span>{language.headings.trajectoryLogic}</span><p>{displayedReasoning}</p></div>{signal ? <><div><span>Confidence</span><p>{Math.round(signal.confidence * 100)}%</p></div><div><span>Urgency</span><p>{Math.round(signal.urgency * 100)}%</p></div><div><span>Suggested next action</span><p>{signal.suggestedNextAction}</p></div></> : null}</div>
+      <section className={`briefing-card${displayedSignal ? " signal-updated" : ""}`} data-signal-stage={signalStage} aria-labelledby="briefing-title" aria-live="polite">
+        <SignalCrossing active={crossing} />
+        <div className="card-eyebrow"><span><TrajectoryMark className="mark-inline" /> {language.headings.executiveSignal}</span><time dateTime={displayedTime}>{new Date(displayedTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</time></div>
+        <div className="signal-body" ref={bodyRef} style={lockedHeight ? { minHeight: lockedHeight } : undefined}>
+          <div className="briefing-primary"><p>{language.headings.highestLeverageAction}</p><h2 id="briefing-title">{displayedAction}</h2></div>
+          <div className="briefing-details"><div><span>{language.headings.currentState}</span><p>{displayedState}</p></div><div><span>{language.headings.currentDynamics}</span><p>{displayedConstraint}</p></div><div><span>{language.headings.expectedShift}</span><p>{displayedImpact}</p></div><div><span>{language.headings.trajectoryLogic}</span><p>{displayedReasoning}</p></div>{displayedSignal ? <><div><span>Confidence</span><p>{Math.round(displayedSignal.confidence * 100)}%</p></div><div><span>Urgency</span><p>{Math.round(displayedSignal.urgency * 100)}%</p></div><div><span>Suggested next action</span><p>{displayedSignal.suggestedNextAction}</p></div></> : null}</div>
+        </div>
       </section>
     </main>
   );
