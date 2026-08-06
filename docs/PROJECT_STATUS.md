@@ -16,6 +16,27 @@ thinking while the user was away.
 
 ## Current Production State
 
+### Merge status
+
+PR #11 was squash-merged into `main` on 6 August 2026 as
+`667defa9bab20c0cde8ec8cd19e0a4815ca86904`, carrying the cinematic motion
+integration, the stale-history supersession fix, and the provider diagnostics
+and retry hardening. The squash commit preserves the full pull request
+description and acceptance evidence. `main` is tree-identical to the merged
+branch tip across all 27 changed files. The language audit, ESLint, strict
+TypeScript, the fifteen regression tests and the production build all pass on
+merged `main`, and a local production server built from `main` serves
+`/api/health` (`status: ok`, all five providers enumerated) and `/login`
+(Trajectory title and recovery copy present).
+
+Confirming that the Vercel production deployment for this merge started and
+became Ready was **not possible from the build environment**: its network
+policy refuses outbound connections to the deployment host, and the GitHub
+integration available here does not expose the Deployments API. The local
+checks above verify the merged code, not the running deployment. Deployment
+readiness and the live `/api/health` and `/login` responses should be confirmed
+from the Vercel dashboard or an unrestricted network.
+
 ### Deployment status
 
 The core Trajectory orb experience is deployed through GitHub and Vercel. The
@@ -276,6 +297,38 @@ entries must not be removed.
   production failure, and prioritise connector ingestion so the open-work
   record is populated from live sources.
 
+### 6 August 2026 — PR #11 merged: cinematic motion and signal freshness
+
+- **Version or PR:** PR #11, squash-merged into `main` as
+  `667defa9bab20c0cde8ec8cd19e0a4815ca86904`.
+- **Summary:** Closed the loop on the cinematic motion system and the reasoning
+  defect that live acceptance exposed, delivering both in a single merge.
+- **Key achievements:** Cinematic motion integration completed — the merged
+  primitives are consumed by the running product, the approved shooting star is
+  the only symbol, the voice orb carries five phases, Executive Signal
+  transitions hold their height, reduced motion is honoured globally and
+  ambient motion pauses when the page is hidden. Physical iPhone Safari
+  fresh-response acceptance passed against the production deployment. The
+  stale-history supersession defect is fixed: replayed turns are age-stamped
+  and labelled history, the previous signal is passed in as superseded, and
+  currently open work is stated as the action space. Provider diagnostics and
+  retry hardening completed: HTTP status, provider error type, provider request
+  identifier, retry-after, stop reason and refusal category are captured;
+  truncated and malformed output are handled distinctly; preserved signals are
+  labelled `Last valid signal · HH:MM`; and retry reuses the final transcript
+  once, re-arming speech playback on the gesture for iOS Safari.
+- **Verification status:** Language audit, ESLint, strict TypeScript, fifteen
+  regression tests and the production build pass on merged `main`, which is
+  tree-identical to the branch tip. `/api/health` and `/login` were served
+  successfully by a production server built from `main`. The forced
+  provider-failure and retry path and the reduced-motion path are verified in
+  desktop Chromium but not on a physical device; both are recorded as
+  non-blocking follow-ups. Vercel deployment readiness was not confirmable from
+  the build environment.
+- **Follow-up:** Connector/open-work ingestion is the next recommended
+  milestone — the same acceptance run that passed also reported an empty
+  open-work record and no platform activity in 24 hours.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
@@ -498,6 +551,26 @@ Changelog entries are append-only.
 - **Follow-up:** Re-test on physical iPhone Safari, and consider opting into
   server-side provider fallbacks for policy declines.
 
+### 6 August 2026 — PR #11 merged into main
+
+- **What changed:** Squash-merged `agent/cinematic-motion-integration` into
+  `main` as `667defa`. The merge delivers four things together: the cinematic
+  motion system wired into the live experience; the physical iPhone Safari
+  fresh-response acceptance; the stale-history supersession fix; and the
+  provider diagnostics and retry hardening.
+- **Why:** Every acceptance criterion that could be verified had been, and the
+  branch had accumulated three reviewed commits whose value only lands once
+  merged.
+- **Verification performed:** `main` is tree-identical to the merged branch
+  tip. Language audit, ESLint, strict TypeScript, fifteen regression tests and
+  the production build all pass on merged `main`. A production server built
+  from `main` returns `status: ok` from `/api/health` and serves `/login`.
+  Deployment readiness could not be confirmed from the build environment — see
+  Merge status above.
+- **Follow-up:** Confirm the production deployment from an unrestricted
+  network, exercise the forced provider-failure and retry path on a physical
+  device, and begin connector/open-work ingestion.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -524,13 +597,19 @@ Changelog entries are append-only.
 
 **Populate the open-work record from live sources.**
 
-Device acceptance on 6 August proved the motion system, the voice pipeline and
-signal grounding all work against production. It also showed that the open-work
-record is empty and no platform activity has registered in 24 hours. Trajectory
-now reports that honestly instead of recycling completed work, but an executive
-intelligence with no tracked work has nothing to reason over — every downstream
-capability is bounded by this. Connector ingestion is the highest-leverage next
-step for that reason.
+With PR #11 merged, device acceptance on 6 August proved the motion system, the
+voice pipeline and signal grounding all work against production. It also showed
+that the open-work record is empty and no platform activity has registered in
+24 hours. Trajectory now reports that honestly instead of recycling completed
+work, but an executive intelligence with no tracked work has nothing to reason
+over — every downstream capability is bounded by this. Connector ingestion is
+the highest-leverage next step for that reason, and no ingestion work has been
+started yet.
+
+**Non-blocking follow-ups carried forward from PR #11:** the forced
+provider-failure and retry path and the reduced-motion path are verified in
+desktop Chromium but not on a physical device; production deployment readiness
+for `667defa` still needs confirming from an unrestricted network.
 
 **Then: complete the remaining Issue #8 surfaces** — splash, launch transition,
 Daily Summary atmosphere, refresh, success and notification states — and **open
