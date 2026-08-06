@@ -25,3 +25,29 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  preview-smoke:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 7
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PREVIEW_URL: https://trajectory-ai-git-feature-voice-pe-1b2bc9-davarntrades-projects.vercel.app
+    steps:
+      - name: Probe live preview edge
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=$(mktemp)
+          status=$(curl --silent --show-error --dump-header "$headers" --output /tmp/body --write-out '%{http_code}' "$PREVIEW_URL/" || true)
+          location=$(awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\r",""); print $2}' "$headers" | tail -1)
+          echo "status=$status location=$location"
+          if [[ "$status" == "302" && "$location" == https://vercel.com/sso-api* ]]; then
+            echo '::warning::Vercel Deployment Protection is active. The deployment edge is reachable, but application runtime remains unverified without an authenticated bypass.'
+            exit 0
+          fi
+          if [[ "$status" == "200" || "$status" == "307" || "$status" == "308" ]]; then
+            exit 0
+          fi
+          cat "$headers"
+          head -c 1000 /tmp/body || true
+          exit 1

@@ -1,7 +1,7 @@
 /** Provider-neutral narrative synthesis over the deterministic state engine. */
 import { trajectoryLanguage as language } from "@/content/trajectory-language";
 import { config } from "@/lib/config";
-import { resolveProvider, type ProviderId, type ProviderPreference } from "@/lib/providers";
+import { ProviderRequestError, resolveProvider, type ProviderId, type ProviderPreference } from "@/lib/providers";
 import type { EngineOutput } from "@/lib/state/engine";
 import type { Memory, RecommendedAction } from "@/lib/types";
 
@@ -16,9 +16,17 @@ Product language:
 - Use "${language.headings.executiveSignal}", "${language.headings.highestLeverageAction}", "${language.headings.currentState}", "${language.headings.currentDynamics}", "${language.headings.expectedShift}" and "${language.headings.trajectoryLogic}".
 - Do not describe internal model activity or present Trajectory as a generic helper.
 
+Evidence boundaries:
+- Explicitly distinguish user-reported state, observed platform activity, inferred trajectory and recommended action.
+- Treat capacity, sleep, illness, stress and recovery notes as self-reported operating context, never as a diagnosis.
+- Low capacity, poor sleep, illness or recovery-day context should reduce the intensity or scope of the action while preserving only essential movement.
+- A big meeting or deadline should increase preparation priority.
+- High capacity with strong sleep may support a more ambitious execution scope.
+- When self-reported capacity is weak, reduce confidence in demanding recommendations and explain the adjustment.
+
 Rules:
-- The highest-leverage action is the top-ranked candidate. Do not substitute your own.
-- Every claim must trace to a supplied number or preserved observation. Never invent facts, dates, names or figures.
+- The highest-leverage action is the top-ranked candidate. Do not substitute your own, but you may reduce its scope or sequence it safely.
+- Every claim must trace to a supplied number, user report or preserved observation. Never invent facts, dates, names or figures.
 - Give one action, not a menu.
 - Explain the mechanism: what it unblocks, its cost and the consequence of delay.
 - When user input is supplied, respond through the computed state without abandoning the ranked action.
@@ -53,16 +61,18 @@ export async function synthesise(engine: EngineOutput, memories: Memory[], optio
   if (!provider) return fallback;
   const top = engine.signals.candidates[0];
   const userContext = options.userInput?.trim() ? `\n\n## User observation\n${options.userInput.trim()}` : "";
-  const continuityContext = options.conversationContext?.trim() ? `\n\n## Recent continuity\n${options.conversationContext.trim()}` : "";
+  const continuityContext = options.conversationContext?.trim() ? `\n\n## Evidence and continuity\n${options.conversationContext.trim()}` : "";
   try {
     const response = await provider.generate({
       systemPrompt: systemPrompt(options.ownerName),
-      prompt: `${renderState(engine, memories)}${continuityContext}${userContext}\n\nReturn today's objective, concise ${language.headings.trajectoryLogic.toLowerCase()} and the mandatory top-ranked action.`,
+      prompt: `${renderState(engine, memories)}${continuityContext}${userContext}\n\nReturn today's objective, concise ${language.headings.trajectoryLogic.toLowerCase()} and the mandatory top-ranked action with any capacity adjustment clearly identified.`,
     });
     return { todaysObjective: response.narrative.todaysObjective, reasoning: response.narrative.reasoning, recommendedAction: top ? { title: response.narrative.recommendedAction.title, why: response.narrative.recommendedAction.why, leverage: top.leverage, candidateId: top.id, tier: top.kind === "opportunity" ? "draft" : "recommend" } : undefined, provider: provider.id, model: response.model };
   } catch (error) {
     console.error(`[trajectory] ${provider.id} synthesis failed:`, error);
-    if (options.provider && options.provider !== "auto") throw error;
+    if (options.provider && options.provider !== "auto") {
+      throw new ProviderRequestError(provider.id, provider.model, error instanceof Error ? error.name : "UnknownError", error instanceof Error ? error.message : "Provider request failed");
+    }
     return fallback;
   }
 }
