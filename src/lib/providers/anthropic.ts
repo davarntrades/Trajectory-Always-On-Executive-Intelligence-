@@ -3,8 +3,8 @@ import { config } from "@/lib/config";
 import { ProviderNarrativeSchema, type IntelligenceProvider, type ProviderRequest } from "./types";
 
 // Keep the provider-side schema limited to constraints accepted by Anthropic's
-// structured-output API. Length and semantic constraints remain enforced once,
-// after the response, by ProviderNarrativeSchema.
+// structured-output API. Length, range and semantic constraints remain enforced
+// after the response by ProviderNarrativeSchema.
 const NARRATIVE_SCHEMA = {
   type: "object",
   properties: {
@@ -22,9 +22,9 @@ const NARRATIVE_SCHEMA = {
     currentObservation: { type: "string" },
     currentConstraint: { type: "string" },
     expectedImpact: { type: "string" },
-    confidence: { type: "number", minimum: 0, maximum: 1 },
+    confidence: { type: "number" },
     suggestedNextAction: { type: "string" },
-    urgency: { type: "number", minimum: 0, maximum: 1 },
+    urgency: { type: "number" },
   },
   required: [
     "todaysObjective",
