@@ -14,6 +14,9 @@ import {
   type ProviderPreference,
 } from "@/lib/providers";
 import { buildContinuity, buildStateEvidence, freshnessInstruction } from "@/lib/voice/continuity";
+import { buildEvidenceReferences, evidenceLabel, rankOpenWork, selectActivePriority } from "@/lib/work/canonical";
+import { listWorkItems } from "@/lib/work/repository";
+import type { WorkItem } from "@/lib/work/types";
 import { computeState } from "@/lib/state/compute";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getWorkspaceRepository } from "@/lib/workspace/repository";
@@ -197,19 +200,46 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
       checkIn: checkInContext(morningCheckIn) || undefined,
       personalisation: `Personalisation: involvement ${profile.involvementLevel}; priority areas ${profile.priorityAreas.join(", ") || "not set"}.`,
     });
+    // The canonical work items are the evidence layer. Where they exist they
+    // are authoritative for what is open, because unlike engine candidates
+    // they carry explicit completion state. Engine candidates remain the
+    // fallback so a workspace with no ingested work still reasons.
+    const workItems = await listWorkItems().catch(() => [] as WorkItem[]);
+    const rankedOpenWork = rankOpenWork(workItems);
+    const activePriority = selectActivePriority(workItems);
+    const completedWork = workItems.filter((item) => item.status === "completed");
+    const evidenceReferences = buildEvidenceReferences(
+      [...rankedOpenWork, ...completedWork.slice(0, 10)],
+    );
+
+    const openWork = rankedOpenWork.length
+      ? rankedOpenWork.map((item) => ({
+          title: item.title,
+          kind: item.status,
+          reference: evidenceLabel(item),
+          active: item.id === activePriority?.id,
+          updatedAt: item.updatedAt,
+        }))
+      : state.signals.candidates.map((candidate) => ({ title: candidate.title, kind: candidate.kind }));
+
     const stateEvidence = buildStateEvidence({
       trajectory: state.trajectory,
       riskLevel: state.riskLevel,
       bottleneck: state.bottleneck?.title,
       eventsLast24h: state.signals.eventsLast24h,
-      openWork: state.signals.candidates.map((candidate) => ({ title: candidate.title, kind: candidate.kind })),
+      openWork,
+      completedWork: completedWork.slice(0, 10).map((item) => ({
+        title: item.title,
+        reference: evidenceLabel(item),
+        completedAt: item.completedAt,
+      })),
       priorSignal: previousSignal
         ? { highestLeverageRecommendation: previousSignal.highestLeverageRecommendation, computedAt: previousSignal.computedAt }
         : null,
       transcript: input.transcript,
     });
 
-    log("provider_request_starting", { ...evidence, requestedProvider, normalizedProvider: selectedProvider, provider: provider.id, resolvedModel: provider.model, providerRequestAttempted: true, vercelEnv: runtime.vercelEnv, openWorkCount: state.signals.candidates.length, priorSignalId: previousSignal?.id ?? null });
+    log("provider_request_starting", { ...evidence, requestedProvider, normalizedProvider: selectedProvider, provider: provider.id, resolvedModel: provider.model, providerRequestAttempted: true, vercelEnv: runtime.vercelEnv, openWorkCount: openWork.length, workItemsIngested: workItems.length, completedWorkCount: completedWork.length, activePriorityId: activePriority?.id ?? null, evidenceReferenceCount: evidenceReferences.length, priorSignalId: previousSignal?.id ?? null });
     let response;
     try {
       response = await provider.generate({
@@ -267,7 +297,10 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
       throw new SignalPersistenceError();
     }
 
-    const signal = { id: persisted.id, computedAt: persisted.generated_at, ...draft };
+    // Provenance travels with the signal: which work records it was allowed to
+    // reason from, their status and when each was last confirmed. A
+    // recommendation that cannot be traced to one of these is not grounded.
+    const signal = { id: persisted.id, computedAt: persisted.generated_at, ...draft, evidence: evidenceReferences };
     const speech = speechFor(draft, narrative.recommendedAction.why);
     await repository.appendMessage({
       conversationId,
@@ -275,7 +308,7 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
       content: draft.reasoning,
       provider: provider.id,
       model: response.model,
-      metadata: { channel: "voice", requestId: input.requestId, providerRequestId: response.requestId ?? null, executiveSignalId: persisted.id, executiveSignal: signal, expectedImpact: draft.expectedImpact },
+      metadata: { channel: "voice", requestId: input.requestId, providerRequestId: response.requestId ?? null, executiveSignalId: persisted.id, executiveSignal: signal, expectedImpact: draft.expectedImpact, evidence: evidenceReferences, activePriorityId: activePriority?.id ?? null },
     });
     await Promise.all([
       repository.recordVoice({ conversationId, transcript: input.transcript, responseText: speech, provider: provider.id, model: response.model, durationMs: Date.now() - startedAt, status: "completed" }),

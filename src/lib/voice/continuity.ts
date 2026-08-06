@@ -25,6 +25,22 @@ export interface ContinuityTurn {
 export interface OpenWorkItem {
   title: string;
   kind: string;
+  /** Citation for this item, e.g. "PR #11" or "issue #8". */
+  reference?: string;
+  /** Whether this is the one current active priority. */
+  active?: boolean;
+  updatedAt?: string;
+}
+
+/**
+ * Work that is finished. Naming it explicitly is stronger than omitting it:
+ * the model is told what has already been delivered, so it cannot present it
+ * as a next step and can say why it is not recommending it.
+ */
+export interface CompletedWorkItem {
+  title: string;
+  reference?: string;
+  completedAt?: string;
 }
 
 export interface PriorSignal {
@@ -38,6 +54,7 @@ export interface EvidenceInput {
   bottleneck?: string;
   eventsLast24h: number;
   openWork: OpenWorkItem[];
+  completedWork?: CompletedWorkItem[];
   priorSignal?: PriorSignal | null;
   transcript: string;
   now?: number;
@@ -89,13 +106,36 @@ export function buildStateEvidence(input: EvidenceInput): string {
     `Recent platform activity: ${input.eventsLast24h} events in the last 24 hours.`,
   ];
 
+  const activeItem = input.openWork.find((item) => item.active);
+  lines.push(
+    activeItem
+      ? `Current active priority: ${activeItem.title}${activeItem.reference ? ` [${activeItem.reference}]` : ""}.`
+      : "Current active priority: none has been set.",
+  );
+
   lines.push(
     input.openWork.length
-      ? `Work still open right now (this is the complete set of open items; anything not listed here is finished or not tracked):\n${input.openWork
-          .map((item) => `- ${item.title} (${item.kind})`)
+      ? `Work still open right now (this is the complete set of open items; anything not listed here is finished or not tracked). Cite the reference in square brackets when you recommend an item:\n${input.openWork
+          .map((item) => {
+            const reference = item.reference ? ` [${item.reference}]` : "";
+            const age = item.updatedAt ? `, updated ${relativeAge(item.updatedAt, now)}` : "";
+            return `- ${item.title}${reference} (${item.kind}${age})`;
+          })
           .join("\n")}`
       : "Work still open right now: nothing is currently tracked as open.",
   );
+
+  if (input.completedWork?.length) {
+    lines.push(
+      `Already completed and therefore not available to recommend. If the user asks about any of these, say it is done:\n${input.completedWork
+        .map((item) => {
+          const reference = item.reference ? ` [${item.reference}]` : "";
+          const when = item.completedAt ? `, completed ${relativeAge(item.completedAt, now)}` : "";
+          return `- ${item.title}${reference}${when}`;
+        })
+        .join("\n")}`,
+    );
+  }
 
   if (input.priorSignal) {
     lines.push(
@@ -140,4 +180,4 @@ export function buildContinuity(input: ContinuityInput): string {
  * The grounding rules that keep a recommendation attached to work that is
  * actually still open.
  */
-export const freshnessInstruction = `Ground the recommendation in the open-work list and the user's request. Never recommend work that the open-work list does not show as open, and never repeat a superseded recommendation unless it still appears there. Earlier exchanges are history: treat anything Trajectory recommended previously as already delivered.`;
+export const freshnessInstruction = `Ground the recommendation in the open-work list and the user's request. Never recommend work that the open-work list does not show as open, and never repeat a superseded recommendation unless it still appears there. Never recommend anything listed as already completed. Earlier exchanges are history: treat anything Trajectory recommended previously as already delivered. When you recommend an open item, cite its reference in square brackets exactly as given, so the recommendation can be traced to the record that justified it.`;

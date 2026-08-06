@@ -29,6 +29,10 @@ export const config = {
   appUrl: cleanValue(process.env.NEXT_PUBLIC_APP_URL) ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
   connectorEncryptionKey: cleanSecret(process.env.CONNECTOR_ENCRYPTION_KEY),
   cronSecret: cleanSecret(process.env.CRON_SECRET),
+  // Open-work ingestion. Read-only repository scope is sufficient; nothing in
+  // this path writes to GitHub.
+  githubToken: cleanSecret(process.env.GITHUB_INGESTION_TOKEN),
+  githubRepository: cleanValue(process.env.GITHUB_INGESTION_REPOSITORY),
   ownerId: cleanValue(process.env.TRAJECTORY_OWNER_ID) ?? "00000000-0000-0000-0000-000000000001",
   ownerName: cleanValue(process.env.TRAJECTORY_OWNER_NAME) ?? "Davarn",
   timezone: cleanValue(process.env.TRAJECTORY_TIMEZONE) ?? "Europe/London",
