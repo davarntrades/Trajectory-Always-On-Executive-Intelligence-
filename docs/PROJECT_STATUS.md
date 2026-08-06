@@ -219,6 +219,41 @@ entries must not be removed.
   motion and a 390 × 844 mobile viewport were captured. Physical iPhone Safari
   verification is still outstanding.
 
+### 6 August 2026 — Executive Signal freshness and provider failure handling
+
+- **Version or PR:** Branch `agent/cinematic-motion-integration`, following the
+  physical iPhone Safari acceptance test of the cinematic motion work.
+- **Summary:** Repaired the reasoning and freshness defect exposed by live
+  acceptance: a stale Executive Signal recommending already-completed work
+  stayed on screen, unlabelled, after a provider request failed.
+- **Key achievements:** Established that no stale reference was hard-coded —
+  the seed fixtures, migrations and prompt construction contain no reference to
+  the completed work, and the recommendation was reproduced from Trajectory's
+  own prior output being replayed into the prompt as untimestamped, unlabelled
+  context. Rebuilt request-context assembly so earlier turns are age-stamped and
+  marked as history, the previous signal is passed in as explicitly superseded,
+  and the set of currently open work is stated as the action space. Captured
+  provider HTTP status, provider error type, provider request identifier,
+  retry-after, stop reason and refusal category on failure, none of which were
+  previously recorded. Added explicit handling for truncated and malformed
+  provider output, which had been indistinguishable from a generic failure, and
+  moved the Anthropic call to streaming with a larger ceiling so adaptive
+  thinking cannot exhaust the budget mid-response. Preserved failed-request
+  signals behind a `Last valid signal · HH:MM` marker instead of presenting them
+  as current, and added a retry that reuses the final transcript without
+  requiring the user to speak again.
+- **Verification status:** Language audit, ESLint, strict TypeScript, fifteen
+  regression tests and the production build all pass. The failure path was
+  driven end to end in Chromium: a failed request preserved the previous signal,
+  relabelled it with its own generation time and offered a retry; the retry sent
+  the identical transcript exactly once under a new request identifier; and the
+  successful retry replaced the signal and cleared the stale marker. The
+  displayed transcript renders as `Where is my trajectory today?` while the
+  request payload carries the unaltered recognised text.
+- **Follow-up:** Re-test the failure and retry path on physical iPhone Safari,
+  then use the newly captured provider diagnostics to attribute the original
+  production failure.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
@@ -414,6 +449,24 @@ Changelog entries are append-only.
 - **Follow-up:** Verify on physical iPhone Safari, then carry the same motion
   language into the splash and launch transition, Daily Summary atmosphere,
   pull-to-refresh, success and notification states from Issue #8.
+
+### 6 August 2026 — Signal freshness and provider failure diagnostics
+
+- **What changed:** Grounded voice request context in currently open work,
+  age-stamped replayed history, marked the previous signal as superseded,
+  captured full provider failure detail, labelled preserved signals as stale
+  rather than current, and added a same-transcript retry.
+- **Why:** A live acceptance test surfaced a signal recommending completed work
+  and left it displayed as though it answered a new request that had actually
+  failed. The stale reference came from Trajectory's own prior output being
+  replayed as untimestamped context, and the failure itself was untraceable
+  because no provider status, error type or request identifier was recorded.
+- **Verification performed:** Language audit, lint, strict TypeScript, fifteen
+  regression tests and the production build passed. The failure, stale-label,
+  retry and replacement path was exercised in a real browser; evidence is in
+  `docs/motion/`.
+- **Follow-up:** Re-test on physical iPhone Safari, and consider opting into
+  server-side provider fallbacks for policy declines.
 
 ## Engineering Principles
 

@@ -7,16 +7,18 @@ import {
   ProviderNarrativeSchema,
   ProviderRequestError,
   ProviderUnavailableError,
+  describeProviderFailure,
   providerOptions,
   providerPreferences,
   resolveProvider,
   type ProviderPreference,
 } from "@/lib/providers";
+import { buildContinuity, buildStateEvidence, freshnessInstruction } from "@/lib/voice/continuity";
 import { computeState } from "@/lib/state/compute";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getWorkspaceRepository } from "@/lib/workspace/repository";
 import { checkInContext, getPersonalProfile, getTodayCheckIn } from "@/lib/personalization";
-import { persistExecutiveSignal } from "@/lib/executive-signals";
+import { getLatestExecutiveSignal, persistExecutiveSignal } from "@/lib/executive-signals";
 import { providerRuntimeDiagnostics } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
@@ -186,22 +188,45 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
     });
 
     const state = await computeState({ persist: true, deterministicOnly: true, ownerName: profile.displayName });
-    const continuity = [
-      checkInContext(morningCheckIn),
-      `Personalisation: involvement ${profile.involvementLevel}; priority areas ${profile.priorityAreas.join(", ") || "not set"}.`,
-      recentMessages.map((message) => `${message.role}: ${message.content}`).join("\n").slice(-6000),
-    ].filter(Boolean).join("\n\n");
-    const stateEvidence = `Direction: ${state.trajectory}. Risk: ${state.riskLevel}. Current bottleneck: ${state.bottleneck?.title ?? "none recorded"}. Recent platform activity: ${state.signals.eventsLast24h} events in the last 24 hours. User request: ${input.transcript}.`;
+    // The previous signal is passed in as explicitly superseded rather than
+    // being left to surface as ordinary history, which is how an already
+    // delivered recommendation used to come back as a fresh one.
+    const previousSignal = await getLatestExecutiveSignal().catch(() => null);
+    const continuity = buildContinuity({
+      turns: recentMessages.map((record) => ({ fromTrajectory: record.role === "assistant", content: record.content, createdAt: record.createdAt })),
+      checkIn: checkInContext(morningCheckIn) || undefined,
+      personalisation: `Personalisation: involvement ${profile.involvementLevel}; priority areas ${profile.priorityAreas.join(", ") || "not set"}.`,
+    });
+    const stateEvidence = buildStateEvidence({
+      trajectory: state.trajectory,
+      riskLevel: state.riskLevel,
+      bottleneck: state.bottleneck?.title,
+      eventsLast24h: state.signals.eventsLast24h,
+      openWork: state.signals.candidates.map((candidate) => ({ title: candidate.title, kind: candidate.kind })),
+      priorSignal: previousSignal
+        ? { highestLeverageRecommendation: previousSignal.highestLeverageRecommendation, computedAt: previousSignal.computedAt }
+        : null,
+      transcript: input.transcript,
+    });
 
-    log("provider_request_starting", { ...evidence, requestedProvider, normalizedProvider: selectedProvider, provider: provider.id, resolvedModel: provider.model, providerRequestAttempted: true, vercelEnv: runtime.vercelEnv });
+    log("provider_request_starting", { ...evidence, requestedProvider, normalizedProvider: selectedProvider, provider: provider.id, resolvedModel: provider.model, providerRequestAttempted: true, vercelEnv: runtime.vercelEnv, openWorkCount: state.signals.candidates.length, priorSignalId: previousSignal?.id ?? null });
     let response;
     try {
       response = await provider.generate({
         systemPrompt: systemPrompt(profile.displayName),
-        prompt: `${stateEvidence}\n\n${continuity}\n\nReturn the complete structured Executive Signal. Keep suggestedNextAction shorter than recommendedAction.title.`,
+        prompt: `${stateEvidence}\n\n${continuity}\n\n${freshnessInstruction}\n\nReturn the complete structured Executive Signal. Keep suggestedNextAction shorter than recommendedAction.title.`,
       });
     } catch (error) {
-      throw new ProviderRequestError(provider.id, provider.model, error instanceof Error ? error.name : "UnknownError", error instanceof Error ? error.message : "Provider request failed");
+      // Adapters that already classified the failure keep their detail; only
+      // an unclassified error gets wrapped here.
+      if (error instanceof ProviderRequestError) throw error;
+      throw new ProviderRequestError(
+        provider.id,
+        provider.model,
+        error instanceof Error ? error.name : "UnknownError",
+        error instanceof Error ? error.message : "Provider request failed",
+        describeProviderFailure(error),
+      );
     }
     log("provider_completed", { ...evidence, provider: provider.id, model: response.model, providerRequestId: response.requestId ?? null, latencyMs: Date.now() - startedAt });
 
@@ -261,8 +286,24 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
     return NextResponse.json({ requestId: input.requestId, speech, signal, conversationId, diagnostics: { provider: provider.id, model: response.model, providerRequestId: response.requestId ?? null, persisted: true } });
   } catch (error) {
     const failure = classify(error);
+    // Everything needed to attribute a live failure without reproducing it:
+    // which model ran, what the provider returned, and its request id.
+    const providerDetail = error instanceof ProviderRequestError
+      ? {
+          provider: error.providerId,
+          model: error.model,
+          causeName: error.causeName,
+          providerMessage: error.message,
+          providerStatus: error.detail.status ?? null,
+          providerErrorType: error.detail.providerErrorType ?? null,
+          providerRequestId: error.detail.providerRequestId ?? null,
+          retryAfterSeconds: error.detail.retryAfterSeconds ?? null,
+          stopReason: error.detail.stopReason ?? null,
+          refusalCategory: error.detail.refusalCategory ?? null,
+        }
+      : {};
     if (repository) await repository.recordVoice({ conversationId, transcript: input.transcript, durationMs: Date.now() - startedAt, status: "failed", errorCode: failure.code }).catch(() => undefined);
-    log("response_failed", { ...evidence, status: failure.status, stage: failure.stage, failureCode: failure.code, errorType: error instanceof Error ? error.name : "unknown" });
+    log("response_failed", { ...evidence, status: failure.status, stage: failure.stage, failureCode: failure.code, errorType: error instanceof Error ? error.name : "unknown", latencyMs: Date.now() - startedAt, ...providerDetail });
     return NextResponse.json({ error: failure.userMessage, recoverable: true, requestId: input.requestId, code: failure.code }, { status: failure.status });
   }
 }

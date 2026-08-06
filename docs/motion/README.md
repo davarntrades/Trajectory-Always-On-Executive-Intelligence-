@@ -19,6 +19,8 @@ every component, style and state transition shown is the production code path.
 | `08-mobile.png` | 390 × 844 mobile viewport, full page |
 | `09-mark-header.png` | Header lockup at 8× against the approved brand asset |
 | `10-mark-eyebrow.png` | The shooting-star mark beside Executive Signal |
+| `11-stale-signal.png` | Provider failure — the previous signal is preserved but labelled `Last valid signal · 02:37` |
+| `12-retry-replaced.png` | Successful retry — the replacement signal takes over and the stale marker clears |
 
 The approved source designs these are compared against live in
 `public/brand/trajectory-concepts/`.
