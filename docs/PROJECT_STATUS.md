@@ -329,6 +329,43 @@ entries must not be removed.
   milestone — the same acceptance run that passed also reported an empty
   open-work record and no platform activity in 24 hours.
 
+### 6 August 2026 — Live open-work ingestion and launch backlog (in review)
+
+- **Version or PR:** Branch `agent/live-open-work-ingestion`, draft pull
+  request into `main`.
+- **Summary:** Gave Trajectory a current-state evidence layer. Until now it had
+  no authoritative record of what was still open, which is why completed work
+  was the only material available to recommend.
+- **Key achievements:** A canonical work-item schema with five explicit
+  statuses — open, active, blocked, completed, superseded — plus completion,
+  last-updated, supersession and reopened timestamps, persisted in a
+  user-scoped `work_items` table whose check constraints refuse a completed
+  item without a completion timestamp. Manual launch tasks and GitHub issue and
+  pull-request ingestion write to the same schema. Merged pull requests and
+  closed issues become completed; pull requests closed unmerged and issues
+  closed as not planned become superseded; an explicitly reopened issue is the
+  only route back into the open set. Completed and superseded work is filtered
+  out at selection rather than left to prompt wording, so no caller can
+  reintroduce it. Exactly one active priority is enforced on write. The open
+  work set, the active priority and the completed set are all passed into
+  Executive Signal prompt construction, and every generated signal carries
+  evidence references — work-item id, citation label, status and timestamp —
+  so a recommendation can be traced to the record that justified it. A launch
+  backlog surface shows the active priority, the next three open items, blocked
+  items and recently completed items, reusing the existing card material.
+- **Verification status:** Language audit, ESLint, strict TypeScript,
+  thirty-three tests and the production build pass. Eighteen new tests cover
+  GitHub normalisation, the reopened exception, exclusion of completed work
+  from the prompt, single active priority, board composition, evidence
+  provenance and re-ingestion merge. The board was rendered in Chromium at
+  desktop and 390 px widths with no horizontal overflow. **No live GitHub
+  ingestion has been run** — the build environment's network policy blocks
+  api.github.com — so the adapter's request path is unproven against the real
+  API.
+- **Follow-up:** Run a live sync against the Trajectory repository, apply the
+  `work_items` migration to production, and confirm the ingested board on a
+  physical device.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
