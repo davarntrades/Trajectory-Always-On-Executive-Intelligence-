@@ -1,7 +1,25 @@
 import "server-only";
 
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/session";
+
+export const ExecutiveSignalResponseSchema = z.object({
+  id: z.string().uuid(),
+  computedAt: z.string().min(1),
+  highestLeverageRecommendation: z.string().trim().min(1),
+  currentObservation: z.string().trim().min(1),
+  reasoning: z.string().trim().min(1),
+  expectedImpact: z.string().trim().min(1),
+  confidence: z.number().min(0).max(1),
+  currentConstraint: z.string().trim().min(1),
+  suggestedNextAction: z.string().trim().min(1),
+  urgency: z.number().min(0).max(1),
+  trajectory: z.enum(["accelerating", "steady", "slipping", "stalled"]),
+  riskLevel: z.enum(["low", "elevated", "high", "critical"]),
+});
+
+export type ExecutiveSignalResponse = z.infer<typeof ExecutiveSignalResponseSchema>;
 
 export interface PersistedExecutiveSignalInput {
   requestId: string;
@@ -43,4 +61,27 @@ export async function persistExecutiveSignal(input: PersistedExecutiveSignalInpu
   }).select("id, generated_at").single();
   if (error) throw new Error(`executive signal: ${error.message}`);
   return data;
+}
+
+export async function getLatestExecutiveSignal(): Promise<ExecutiveSignalResponse | null> {
+  const user = await requireUser();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("messages")
+    .select("metadata, created_at")
+    .eq("user_id", user.id)
+    .eq("role", "assistant")
+    .not("metadata->executiveSignal", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error) throw new Error(`latest executive signal: ${error.message}`);
+  for (const row of data ?? []) {
+    const metadata = row.metadata && typeof row.metadata === "object"
+      ? row.metadata as Record<string, unknown>
+      : {};
+    const parsed = ExecutiveSignalResponseSchema.safeParse(metadata.executiveSignal);
+    if (parsed.success) return parsed.data;
+  }
+  return null;
 }
