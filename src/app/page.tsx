@@ -1,6 +1,7 @@
 import { TrajectoryExperience, type ExperienceState } from "@/components/trajectory/trajectory-experience";
 import { EntryExperiences } from "@/components/trajectory/entry-experiences";
 import { config } from "@/lib/config";
+import { getLatestExecutiveSignal } from "@/lib/executive-signals";
 import { providerOptions } from "@/lib/providers";
 import { computeState } from "@/lib/state/compute";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -19,9 +20,10 @@ export default async function Home() {
 
   // Ordinary page rendering must never invoke an external provider. Provider
   // synthesis belongs to an explicit user interaction such as the voice route.
-  // This keeps the root experience available when a key, model, or provider is
-  // temporarily unavailable and prevents an external error from aborting SSR.
-  const state = await computeState({ persist: true, deterministicOnly: true, ownerName });
+  const [state, latestSignal] = await Promise.all([
+    computeState({ persist: true, deterministicOnly: true, ownerName }),
+    user ? getLatestExecutiveSignal().catch(() => null) : Promise.resolve(null),
+  ]);
   const experienceState: ExperienceState = {
     computedAt: state.computedAt,
     trajectory: state.trajectory,
@@ -34,7 +36,7 @@ export default async function Home() {
   };
 
   return <>
-    <TrajectoryExperience ownerName={ownerName} state={experienceState} providers={providers} defaultProvider={preferredProvider} />
+    <TrajectoryExperience ownerName={ownerName} state={experienceState} providers={providers} defaultProvider={preferredProvider} initialSignal={latestSignal} />
     {profile ? <EntryExperiences initialProfile={profile} initialCheckIn={checkIn} showMorningCheckIn={showCheckIn} providers={providers} /> : null}
   </>;
 }
