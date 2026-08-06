@@ -61,9 +61,12 @@ button { font: inherit; }
 .light-positive { --edge-a: rgba(88, 235, 189, .38); --edge-b: rgba(82, 154, 255, .28); }
 .light-attention { --edge-a: rgba(235, 189, 98, .42); --edge-b: rgba(119, 150, 255, .26); }
 .light-critical { --edge-a: rgba(255, 75, 80, .48); --edge-b: rgba(255, 160, 92, .3); }
-.status-listening { --edge-a: rgba(95, 181, 255, .5); --edge-b: rgba(157, 211, 255, .3); }
-.status-thinking { --edge-a: rgba(151, 113, 255, .5); --edge-b: rgba(96, 139, 255, .32); }
-.status-speaking { --edge-a: rgba(245, 250, 255, .58); --edge-b: rgba(142, 196, 255, .36); }
+/* Voice phase drives the edge light. Previously this keyed off a `thinking`
+   status the voice pipeline never emits, so the reasoning state was never
+   reflected at all. */
+.trajectory-experience[data-phase="listening"] { --edge-a: rgba(95, 181, 255, .5); --edge-b: rgba(157, 211, 255, .3); }
+.trajectory-experience[data-phase="integrating"] { --edge-a: rgba(151, 113, 255, .5); --edge-b: rgba(96, 139, 255, .32); }
+.trajectory-experience[data-phase="speaking"] { --edge-a: rgba(245, 250, 255, .58); --edge-b: rgba(142, 196, 255, .36); }
 
 .star-field, .stars, .nebula, .edge-light {
   position: absolute;
@@ -143,19 +146,33 @@ button { font: inherit; }
 }
 .galaxy-one { left: 9%; top: 27%; }
 .galaxy-two { right: 8%; bottom: 24%; width: 110px; transform: rotate(21deg); animation-delay: -18s; }
+/* Shooting stars stay white and directional. The head is a small bright point,
+   the trail is a soft luminous fade behind it — never a coloured streak. */
 .shooting-star {
+  --crossing-angle: -26deg;
+  --crossing-travel: 190px;
+  --crossing-duration: 2200ms;
   position: absolute;
   width: 90px;
   height: 1px;
   border-radius: 99px;
-  background: linear-gradient(90deg, transparent, rgba(183, 216, 255, .25), rgba(255,255,255,.82));
-  filter: drop-shadow(0 0 3px rgba(153, 202, 255, .45));
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.2) 46%, rgba(255,255,255,.85));
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, .38));
   opacity: 0;
-  transform: rotate(-26deg);
+  transform: rotate(var(--crossing-angle));
+  will-change: transform, opacity;
 }
-.shooting-star::after { content: ""; position: absolute; right: -1px; top: -1px; width: 3px; height: 3px; border-radius: 50%; background: white; box-shadow: 0 0 5px white; }
-.shooting-star-one { top: 18%; left: 71%; animation: shooting-star 19s ease-out infinite 3s; }
-.shooting-star-two { top: 68%; left: 19%; width: 65px; animation: shooting-star 27s ease-out infinite 15s; }
+.shooting-star::after { content: ""; position: absolute; right: -1px; top: -1px; width: 3px; height: 3px; border-radius: 50%; background: white; box-shadow: 0 0 5px white, 0 0 11px rgba(255,255,255,.5); }
+.shooting-star-ambient { animation: star-crossing var(--crossing-duration) cubic-bezier(.32, 0, .5, 1) both; }
+.signal-crossing {
+  z-index: 6;
+  top: 34%;
+  left: 62%;
+  width: 128px;
+  --crossing-travel: 320px;
+  --crossing-angle: -14deg;
+  animation: star-crossing var(--crossing-duration) cubic-bezier(.32, 0, .5, 1) both;
+}
 
 .edge-light {
   z-index: 20;
@@ -192,16 +209,25 @@ button { font: inherit; }
   animation: interface-awaken 1.2s cubic-bezier(.2,.75,.2,1) .2s both;
 }
 .wordmark sup { margin-left: -6px; color: var(--faint); font-size: 8px; }
-.trajectory-mark { position: relative; width: 26px; height: 18px; transform: rotate(-24deg); }
+/* The Trajectory symbol. Proportions, angle and the white-on-black luminous
+   treatment are taken from public/brand/trajectory-concepts/: a realistic
+   white point of light travelling up-right with a soft atmospheric trail
+   falling away behind it. It is never tinted or restyled per surface. */
+.trajectory-mark { position: relative; flex: none; width: 26px; height: 18px; transform: rotate(-24deg); }
 .mark-core {
   position: absolute; right: 1px; top: 4px; width: 9px; height: 9px; border-radius: 50%;
-  background: #fff; box-shadow: 0 0 7px #fff, 0 0 16px rgba(112,183,255,.9);
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255,255,255,.95), 0 0 11px rgba(255,255,255,.5), 0 0 22px rgba(226,236,255,.28);
 }
 .mark-tail {
   position: absolute; right: 8px; top: 7px; width: 19px; height: 3px; border-radius: 99px;
-  background: linear-gradient(90deg, transparent, rgba(168,204,255,.34), #fff);
-  filter: blur(.35px);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.14) 34%, rgba(255,255,255,.46) 72%, #fff);
+  filter: blur(.4px);
+  opacity: .92;
 }
+.mark-inline { width: 19px; height: 13px; }
+.mark-inline .mark-core { top: 3px; width: 6.5px; height: 6.5px; box-shadow: 0 0 3px rgba(255,255,255,.95), 0 0 8px rgba(255,255,255,.45); }
+.mark-inline .mark-tail { right: 6px; top: 5px; width: 14px; height: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .header-controls { display: flex; align-items: center; gap: 12px; }
 .provider-setting { position: relative; animation: interface-awaken 1.2s cubic-bezier(.2,.75,.2,1) .4s both; }
@@ -318,19 +344,73 @@ button { font: inherit; }
 .stream-one { left: -30%; top: 41%; transform: rotate(8deg); animation: watch-in 5.5s ease-in-out infinite; }
 .stream-two { right: -30%; top: 62%; transform: rotate(-9deg); animation: watch-out 6.5s ease-in-out infinite; }
 
-.is-thinking .trajectory-orb, .is-speaking .trajectory-orb, .is-listening .trajectory-orb { animation-duration: 2.2s, 4s; }
-.is-thinking .orb-atmosphere { animation-duration: 4.5s; filter: blur(11px); }
-.is-thinking .orb-energy { animation-duration: 2.8s; }
-.is-thinking .orb-ring { animation-duration: 7s; }
-.is-thinking .ring-two { animation-duration: 11s; }
-.is-speaking .orb-halo { animation-duration: 1.4s; border-color: rgba(126,194,255,.35); }
-.is-speaking .speech-wave-one { animation: speech-wave 2.1s ease-out infinite; }
-.is-speaking .speech-wave-two { animation: speech-wave 2.1s ease-out infinite .9s; }
-.is-listening .orb-energy { animation-duration: 2.5s; }
-.is-listening .trajectory-orb { border-radius: 47% 53% 50% 50% / 53% 46% 54% 47%; }
-.is-listening .halo-one { animation-duration: 1.7s; }
-.is-listening .speech-wave-one { animation: speech-wave 2.6s ease-out infinite; }
-.is-listening .speech-wave-two { animation: speech-wave 2.6s ease-out 1.2s infinite; }
+/* Internal light that slowly circulates while Trajectory is reasoning. It
+   replaces a conventional spinner: no discrete revolutions to count, no
+   perceptible start or end. */
+.orb-circulation {
+  position: absolute;
+  z-index: 3;
+  inset: 4%;
+  border-radius: 50%;
+  opacity: 0;
+  background: conic-gradient(from 0deg, transparent 0 42%, rgba(255,255,255,.1) 56%, rgba(196,224,255,.2) 63%, rgba(255,255,255,.07) 71%, transparent 86%);
+  filter: blur(9px);
+  transition: opacity 900ms ease;
+}
+
+/* The tiny star that quietly crosses behind the orb while it listens. */
+.orb-passing-star {
+  position: absolute;
+  z-index: 0;
+  top: 38%;
+  right: -6%;
+  width: 78px;
+  height: 1px;
+  border-radius: 99px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.18) 48%, rgba(255,255,255,.8));
+  filter: drop-shadow(0 0 3px rgba(255,255,255,.35));
+  transform: rotate(-22deg);
+}
+.orb-passing-star::after { content: ""; position: absolute; right: -1px; top: -1px; width: 3px; height: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 5px #fff; }
+
+/* Listening — the orb opens outward and the sky immediately around it lifts. */
+.orb-system[data-phase="listening"] { --voice-scale: 1.045; }
+.orb-system[data-phase="listening"] .trajectory-orb { border-radius: 47% 53% 50% 50% / 53% 46% 54% 47%; animation-duration: 4.4s, 7s; }
+.orb-system[data-phase="listening"] .orb-energy { animation-duration: 4.5s; }
+.orb-system[data-phase="listening"] .halo-one { animation-duration: 3.4s; }
+.orb-system[data-phase="listening"] .orb-halo { border-color: rgba(150,199,255,.28); }
+.orb-system[data-phase="listening"] .speech-wave-one { animation: speech-wave 3.6s ease-out infinite; }
+.orb-system[data-phase="listening"] .speech-wave-two { animation: speech-wave 3.6s ease-out 1.8s infinite; }
+.orb-system[data-phase="listening"] .orb-passing-star { animation: orb-star-pass 5.4s cubic-bezier(.34,0,.5,1) 1.1s infinite; }
+.trajectory-experience[data-phase="listening"] .stars-near { opacity: .46; }
+.trajectory-experience[data-phase="listening"] .stars-far { opacity: .8; }
+
+/* Processing — brighter, with light circulating inside rather than a spinner. */
+.orb-system[data-phase="integrating"] { --voice-brightness: 1.14; }
+.orb-system[data-phase="integrating"] .trajectory-orb { animation-duration: 4s, 6.5s; }
+.orb-system[data-phase="integrating"] .orb-circulation { opacity: 1; animation: light-circulation 3.2s linear infinite; }
+.orb-system[data-phase="integrating"] .orb-atmosphere { animation-duration: 11s; filter: blur(13px); }
+.orb-system[data-phase="integrating"] .orb-energy { animation-duration: 5s; }
+.orb-system[data-phase="integrating"] .orb-ring { animation-duration: 13s; }
+.orb-system[data-phase="integrating"] .ring-two { animation-duration: 22s; }
+.trajectory-experience[data-phase="integrating"] .nebula { opacity: .54; }
+.trajectory-experience[data-phase="integrating"] .stars-far { opacity: .78; }
+
+/* Speaking — a soft response pulse in step with the spoken briefing. */
+.orb-system[data-phase="speaking"] .orb-halo { animation-duration: 2.6s; border-color: rgba(206,228,255,.34); }
+.orb-system[data-phase="speaking"] .speech-wave-one { animation: speech-wave 2.6s ease-out infinite; }
+.orb-system[data-phase="speaking"] .speech-wave-two { animation: speech-wave 2.6s ease-out infinite 1.3s; }
+.orb-system[data-phase="speaking"] .orb-circulation { opacity: .45; animation: light-circulation 5.4s linear infinite; }
+
+/* Settling — everything returns to rest slowly rather than snapping back. */
+.orb-system[data-phase="settling"] .trajectory-orb {
+  transition:
+    scale var(--settle-duration, 900ms) cubic-bezier(.22, 1, .36, 1),
+    filter var(--settle-duration, 900ms) ease,
+    border-radius var(--settle-duration, 900ms) cubic-bezier(.22, 1, .36, 1);
+}
+.trajectory-experience .stars-near, .trajectory-experience .stars-far, .trajectory-experience .nebula { transition: opacity 1.6s ease; }
 
 .orb-copy { margin-top: 2px; min-height: 102px; text-align: center; }
 .orb-kicker { margin: 0 0 8px; color: #77869c; font-size: 9px; font-weight: 600; letter-spacing: .24em; text-transform: uppercase; }
@@ -361,6 +441,12 @@ button { font: inherit; }
 }
 .briefing-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 1px; background: linear-gradient(transparent, rgba(116,184,255,.8), transparent); }
 .card-eyebrow { display: flex; align-items: center; justify-content: space-between; color: #74849a; font-size: 9px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+/* A preserved signal must never read as an answer to the request that failed.
+   The label carries its original time and the card is visibly held back. */
+.briefing-card[data-freshness="stale"] { border-color: rgba(235, 189, 98, .28); }
+.briefing-card[data-freshness="stale"] .card-eyebrow span { color: #e8c477; }
+.briefing-card[data-freshness="stale"] .signal-body { opacity: .72; }
+.signal-stale-note { margin: 9px 0 0; color: #9aa7bb; font-size: 11px; line-height: 1.5; }
 .card-eyebrow span { display: flex; align-items: center; gap: 7px; color: #9bb7d8; }
 .briefing-primary { margin-top: 18px; }
 .briefing-primary > p, .briefing-details span { margin: 0; color: #6e7f95; font-size: 9px; font-weight: 600; letter-spacing: .15em; text-transform: uppercase; }
@@ -376,7 +462,12 @@ button { font: inherit; }
 @keyframes milky-drift { to { transform: rotate(-5deg) translate3d(1.5%, -1%, 0); opacity: .21; } }
 @keyframes dust-drift { to { transform: scale(1.06) translate3d(-1%, 1%, 0); opacity: .38; } }
 @keyframes galaxy-drift { to { transform: rotate(-12deg) translate3d(18px, -9px, 0); opacity: .32; } }
-@keyframes shooting-star { 0%, 93% { opacity: 0; transform: translate3d(0,0,0) rotate(-26deg); } 94% { opacity: .05; } 96% { opacity: .55; } 100% { opacity: 0; transform: translate3d(-190px, 100px, 0) rotate(-26deg); } }
+@keyframes star-crossing {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(var(--crossing-angle)) scaleX(.35); }
+  14% { opacity: .62; }
+  72% { opacity: .5; }
+  100% { opacity: 0; transform: translate3d(calc(var(--crossing-travel) * -1), calc(var(--crossing-travel) * .5), 0) rotate(var(--crossing-angle)) scaleX(1); }
+}
 @keyframes edge-travel { 0% { opacity: .35; filter: drop-shadow(0 0 5px var(--edge-a)); } 100% { opacity: .8; filter: drop-shadow(0 0 14px var(--edge-b)); } }
 @keyframes edge-awaken { from { opacity: 0; } to { opacity: .5; } }
 @keyframes interface-awaken { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
@@ -394,6 +485,40 @@ button { font: inherit; }
 @keyframes wake-line { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes card-reveal { from { opacity: 0; translate: 0 18px; } to { opacity: 1; translate: 0 0; } }
 @keyframes card-float { 50% { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 29px 90px rgba(0,0,0,.3); } }
+@keyframes light-circulation { to { transform: rotate(360deg); } }
+@keyframes orb-star-pass {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-22deg); }
+  8% { opacity: .5; }
+  38% { opacity: .34; }
+  52%, 100% { opacity: 0; transform: translate3d(-118%, 58%, 0) rotate(-22deg); }
+}
+@keyframes signal-leave { to { opacity: .12; transform: translateY(-5px); } }
+@keyframes signal-enter { from { opacity: .12; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Executive Signal replacement is never abrupt: the previous recommendation
+   fades, a shooting star crosses the card, the next one fades in. The body
+   holds its measured height so the card cannot jump. */
+.signal-body { transition: min-height 520ms cubic-bezier(.22, 1, .36, 1); will-change: opacity, transform; }
+.briefing-card[data-signal-stage="leaving"] .signal-body { animation: signal-leave 240ms cubic-bezier(.4, 0, 1, 1) both; }
+.briefing-card[data-signal-stage="entering"] .signal-body { animation: signal-enter 420ms cubic-bezier(.16, .84, .24, 1) both; }
+
+/* Ambient motion is suspended whenever the page is hidden or unfocused, so an
+   unattended tab costs no frames. Entrance animations are deliberately left
+   out: pausing those would strand the interface mid-reveal. */
+.trajectory-experience[data-ambient="paused"] .stars,
+.trajectory-experience[data-ambient="paused"] .nebula,
+.trajectory-experience[data-ambient="paused"] .milky-way,
+.trajectory-experience[data-ambient="paused"] .cosmic-dust,
+.trajectory-experience[data-ambient="paused"] .distant-galaxy,
+.trajectory-experience[data-ambient="paused"] .orb-atmosphere,
+.trajectory-experience[data-ambient="paused"] .orb-energy,
+.trajectory-experience[data-ambient="paused"] .orb-energy::before,
+.trajectory-experience[data-ambient="paused"] .orb-energy::after,
+.trajectory-experience[data-ambient="paused"] .orb-circulation,
+.trajectory-experience[data-ambient="paused"] .orb-halo,
+.trajectory-experience[data-ambient="paused"] .orb-ring,
+.trajectory-experience[data-ambient="paused"] .trajectory-orb,
+.trajectory-experience[data-ambient="paused"] .watch-stream { animation-play-state: paused; }
 
 @media (max-width: 700px) {
   .trajectory-experience {
@@ -424,9 +549,32 @@ button { font: inherit; }
   .briefing-details { margin-top: 14px; padding-top: 13px; }
 }
 
+/* Reduced motion: every ambient loop, travel and parallax is removed and each
+   state change becomes a short opacity change instead. Nothing that carries
+   meaning — voice state, signal arrival, loading — is expressed by motion
+   alone, so removing motion removes no information. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
-  .star-field, .orb-copy h1, .wake-dialogue p, .interaction-hint, .briefing-card { opacity: 1 !important; translate: none !important; transform: none !important; filter: none !important; }
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  .star-field, .orb-copy h1, .wake-dialogue p, .interaction-hint, .briefing-card, .signal-body, .edge-light, .trajectory-focus-card {
+    opacity: 1 !important;
+    translate: none !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .trajectory-orb { transform: none !important; scale: 1 !important; }
+  .trajectory-orb, .signal-body, .orb-circulation, .stars, .nebula {
+    transition-duration: 180ms !important;
+    transition-property: opacity !important;
+  }
+  .briefing-card[data-signal-stage="leaving"] .signal-body { opacity: .35 !important; }
+  .shooting-star, .orb-passing-star, .watch-stream, .speech-wave { display: none !important; }
+  .orb-system[data-phase="listening"], .orb-system[data-phase="integrating"] { --voice-scale: 1; --voice-brightness: 1; }
+  .orb-system[data-phase="integrating"] .orb-circulation { opacity: .5; }
 }
 
 /* Auth and workspace surfaces deliberately reuse Trajectory's material system

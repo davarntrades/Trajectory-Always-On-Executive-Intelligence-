@@ -74,14 +74,69 @@ export class ProviderUnavailableError extends Error {
   }
 }
 
+/**
+ * Detail captured from a failed provider call. Without this the only thing
+ * reaching the logs was an error name, which made a live failure impossible to
+ * attribute to a status code, a rate limit, a refusal or a truncated response.
+ */
+export interface ProviderFailureDetail {
+  /** HTTP status from the provider, when the failure reached it. */
+  status?: number;
+  /** Provider-side error discriminator, e.g. rate_limit_error. */
+  providerErrorType?: string;
+  /** Provider request identifier, for correlation with provider-side logs. */
+  providerRequestId?: string | null;
+  /** Seconds the provider asked us to wait, on a rate limit. */
+  retryAfterSeconds?: number;
+  /** Why the model stopped, when the call succeeded but the output was unusable. */
+  stopReason?: string;
+  /** Refusal category, when the provider declined the request. */
+  refusalCategory?: string;
+}
+
 export class ProviderRequestError extends Error {
   constructor(
     public readonly providerId: ProviderId,
     public readonly model: string,
     public readonly causeName: string,
     message: string,
+    public readonly detail: ProviderFailureDetail = {},
   ) {
     super(message);
     this.name = "ProviderRequestError";
   }
+}
+
+/**
+ * Reads status, error type, request id and retry-after off an SDK error
+ * without assuming a particular provider's error class.
+ */
+export function describeProviderFailure(error: unknown): ProviderFailureDetail {
+  if (!error || typeof error !== "object") return {};
+  const candidate = error as {
+    status?: unknown;
+    type?: unknown;
+    request_id?: unknown;
+    requestID?: unknown;
+    error?: { type?: unknown };
+    headers?: unknown;
+  };
+  const detail: ProviderFailureDetail = {};
+  if (typeof candidate.status === "number") detail.status = candidate.status;
+  const providerErrorType = candidate.type ?? candidate.error?.type;
+  if (typeof providerErrorType === "string") detail.providerErrorType = providerErrorType;
+  const requestId = candidate.request_id ?? candidate.requestID;
+  if (typeof requestId === "string") detail.providerRequestId = requestId;
+
+  const headers = candidate.headers;
+  const rawRetryAfter =
+    headers instanceof Headers
+      ? headers.get("retry-after")
+      : headers && typeof headers === "object"
+        ? (headers as Record<string, unknown>)["retry-after"]
+        : undefined;
+  const retryAfter = Number(rawRetryAfter);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) detail.retryAfterSeconds = retryAfter;
+
+  return detail;
 }

@@ -3,7 +3,7 @@
 > Authoritative living record of Trajectory's product progress, engineering
 > milestones, verification history and next recommended milestone.
 >
-> Last updated: 5 August 2026
+> Last updated: 6 August 2026
 
 ## Vision
 
@@ -100,6 +100,24 @@ Protection currently requires a Vercel session before requests reach the app.
 - Changed input creates a state snapshot, trajectory history, daily brief,
   provider usage record and Executive Signal.
 
+### Cinematic motion and visual identity
+
+- Shared motion tokens in `src/content/trajectory-motion.ts` govern duration,
+  easing, ambient cadence, voice-orb phases and reduced-motion alternatives.
+- Reusable celestial primitives in
+  `src/components/trajectory/celestial-motion.tsx`: the Trajectory shooting-star
+  mark, ambient crossings, the Executive Signal crossing, a celestial loader and
+  a constellation success state.
+- The shooting-star mark is the sole symbol in the header lockup and beside
+  Executive Signal; no generic sparkle or icon-library glyph remains in the
+  primary experience.
+- The voice orb is enhanced, not replaced, across idle, listening, integrating,
+  speaking and settling phases.
+- Ambient crossings run on randomised 20–40 second intervals and stop entirely
+  when the page is hidden or reduced motion is requested.
+- `prefers-reduced-motion` is honoured globally, and no state is communicated by
+  motion alone.
+
 ## Completed Milestones
 
 Completed milestones are append-only. Corrections may be added, but historical
@@ -168,6 +186,96 @@ entries must not be removed.
   strict TypeScript and Next.js production build passed; Vercel production
   deployment reached Ready.
 
+### 6 August 2026 — Cinematic motion integration and visual identity
+
+- **Version or PR:** Branch `agent/cinematic-motion-integration`, continuing
+  Issue #8 on top of the merged motion foundation.
+- **Summary:** Connected the previously merged motion tokens and celestial
+  primitives to the live Trajectory experience, made the approved shooting star
+  the product's only symbol, and gave the existing voice orb a full phase
+  vocabulary without replacing it.
+- **Key achievements:** Replaced the Lucide sparkle beside Executive Signal with
+  the Trajectory shooting-star mark and recoloured the mark to the approved
+  white luminous treatment; converted the two fixed-loop CSS shooting stars into
+  a single randomised 20–40 second ambient crossing with randomised origin,
+  length, angle and travel; added idle, listening, integrating, speaking and
+  settling orb phases driven by the real voice status, including internal light
+  circulation in place of a spinner; added a three-stage Executive Signal
+  transition that fades the previous recommendation, crosses the card with a
+  shooting star and fades the replacement in behind a locked body height;
+  suspended ambient motion when the page is hidden or unfocused; broadened
+  `prefers-reduced-motion` handling to cover the new primitives. Repaired a
+  latent defect where the reasoning-state styling keyed off a `thinking` status
+  the voice pipeline never emits, so that state previously had no visual
+  treatment at all.
+- **Physical device acceptance (6 August 2026, iPhone Safari, production
+  deployment):** Cinematic motion, the speaking state and mobile layout were
+  confirmed on device. A long multi-section Executive Signal rendered with no
+  layout jump. Reduced-motion and the forced failure path remain verified in
+  desktop Chromium only.
+- **Verification status:** Language audit, ESLint, strict TypeScript, `node
+  --test` and the Next.js production build all pass. The voice phase sequence
+  (`idle → listening → integrating → speaking → settling → idle`) was driven
+  end to end in Chromium against the real component state machine. The
+  Executive Signal transition was traced through all three stages with the body
+  height held at the previous value across the swap. Ambient crossings were
+  observed over 130 seconds at 34.7 s, 37.6 s and 24.9 s spacing, with zero
+  crossings under reduced motion and zero after the page was hidden. Reduced
+  motion and a 390 × 844 mobile viewport were captured. Physical iPhone Safari
+  verification is still outstanding.
+
+### 6 August 2026 — Executive Signal freshness and provider failure handling
+
+- **Version or PR:** Branch `agent/cinematic-motion-integration`, following the
+  physical iPhone Safari acceptance test of the cinematic motion work.
+- **Summary:** Repaired the reasoning and freshness defect exposed by live
+  acceptance: a stale Executive Signal recommending already-completed work
+  stayed on screen, unlabelled, after a provider request failed.
+- **Key achievements:** Established that no stale reference was hard-coded —
+  the seed fixtures, migrations and prompt construction contain no reference to
+  the completed work, and the recommendation was reproduced from Trajectory's
+  own prior output being replayed into the prompt as untimestamped, unlabelled
+  context. Rebuilt request-context assembly so earlier turns are age-stamped and
+  marked as history, the previous signal is passed in as explicitly superseded,
+  and the set of currently open work is stated as the action space. Captured
+  provider HTTP status, provider error type, provider request identifier,
+  retry-after, stop reason and refusal category on failure, none of which were
+  previously recorded. Added explicit handling for truncated and malformed
+  provider output, which had been indistinguishable from a generic failure, and
+  moved the Anthropic call to streaming with a larger ceiling so adaptive
+  thinking cannot exhaust the budget mid-response. Preserved failed-request
+  signals behind a `Last valid signal · HH:MM` marker instead of presenting them
+  as current, and added a retry that reuses the final transcript without
+  requiring the user to speak again.
+- **Verification status:** Language audit, ESLint, strict TypeScript, fifteen
+  regression tests and the production build all pass. The failure path was
+  driven end to end in Chromium: a failed request preserved the previous signal,
+  relabelled it with its own generation time and offered a retry; the retry sent
+  the identical transcript exactly once under a new request identifier; and the
+  successful retry replaced the signal and cleared the stale marker. The
+  displayed transcript renders as `Where is my trajectory today?` while the
+  request payload carries the unaltered recognised text.
+- **Physical device acceptance (6 August 2026, iPhone Safari, production
+  deployment):** A fresh voice request completed successfully at 15:36. The
+  Executive Signal was replaced and its timestamp advanced. The signal stated
+  that "PR7 and the mobile acceptance pass are delivered and superseded" and
+  recommended none of that completed work, confirming the supersession and
+  open-work grounding behave as designed against live data. Voice playback
+  occurred, the speaking state rendered correctly, a long multi-section signal
+  rendered without layout jump, and cinematic motion and mobile layout stayed
+  smooth. The provider-failure and retry path did not trigger during the run
+  and remains verified in Chromium only.
+- **Finding raised by the same run:** the signal reported an empty open-work
+  record and no platform activity in the preceding 24 hours. The reasoning
+  defect is fixed — Trajectory now reports the gap and recommends rebuilding
+  the backlog instead of recycling completed work — but the absence of tracked
+  open work is the underlying condition that made completed work the only
+  available material. Connector ingestion is what closes it.
+- **Follow-up:** Exercise the forced failure and retry path on a physical
+  device, use the newly captured provider diagnostics to attribute the original
+  production failure, and prioritise connector ingestion so the open-work
+  record is populated from live sources.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
@@ -212,6 +320,28 @@ entries must not be removed.
 
 ### High
 
+- **Complete the remaining Issue #8 motion surfaces.** The splash sequence,
+  icon-to-app launch transition, Daily Summary atmospheric states, pull to
+  refresh, constellation success and in-app notification transitions are
+  specified and have primitives available, but are not yet built into the
+  product. Expected outcome: the full cinematic motion system rather than the
+  home experience alone.
+- **Populate the open-work record from live sources.** The 6 August device
+  acceptance surfaced an empty open-work record and no platform activity in the
+  preceding 24 hours, so Trajectory has no live evidence base to prioritise
+  against. Expected outcome: recommendations grounded in tracked work rather
+  than in the absence of it.
+- **Exercise the provider-failure and retry path on a physical device.** The
+  stale-signal label and same-transcript retry are verified in desktop
+  Chromium; the successful path is verified on device. Expected outcome:
+  device-confirmed recovery behaviour, including spoken playback on a retry.
+- **Verify reduced motion on physical iPhone Safari.** Frame stability, battery
+  behaviour and safe-area insets are confirmed on device; the reduced-motion
+  path is not. Expected outcome: signed-off accessibility behaviour on device.
+- **Carry the celestial atmosphere into authentication.** The login, signup and
+  recovery surfaces still use the plain gradient shell rather than the starfield
+  and nebula treatment described in Issue #8. Expected outcome: a consistent
+  Trajectory atmosphere before sign-in.
 - **Configure Google OAuth.** Register production/preview domains in Google Cloud
   and Supabase Auth. Expected outcome: Google account creation and sign-in.
 - **Configure Apple Sign In.** Provision the Apple Services ID, signing key and
@@ -330,6 +460,44 @@ Changelog entries are append-only.
 - **Follow-up:** Configure production SMTP/rate limits and decide whether
   Vercel-authenticated private access should remain in front of Supabase Auth.
 
+### 6 August 2026 — Cinematic motion integration
+
+- **What changed:** Wired the merged motion tokens and celestial primitives into
+  the live experience, replaced the Executive Signal sparkle with the approved
+  shooting-star mark, randomised the ambient crossing cadence, gave the existing
+  voice orb five interaction phases, added a non-abrupt Executive Signal
+  transition, suspended ambient motion on hidden pages and extended
+  reduced-motion coverage.
+- **Why:** The motion foundation existed but nothing in the running product
+  consumed it, and the reasoning state had no visual treatment because its CSS
+  keyed off a status the voice pipeline never emits.
+- **Verification performed:** Language audit, lint, strict TypeScript, tests and
+  the production build passed. The voice phase sequence, the three-stage signal
+  transition with its height lock, the randomised ambient cadence, the
+  hidden-page pause and reduced-motion suppression were each exercised in a real
+  browser; evidence is in `docs/motion/`.
+- **Follow-up:** Verify on physical iPhone Safari, then carry the same motion
+  language into the splash and launch transition, Daily Summary atmosphere,
+  pull-to-refresh, success and notification states from Issue #8.
+
+### 6 August 2026 — Signal freshness and provider failure diagnostics
+
+- **What changed:** Grounded voice request context in currently open work,
+  age-stamped replayed history, marked the previous signal as superseded,
+  captured full provider failure detail, labelled preserved signals as stale
+  rather than current, and added a same-transcript retry.
+- **Why:** A live acceptance test surfaced a signal recommending completed work
+  and left it displayed as though it answered a new request that had actually
+  failed. The stale reference came from Trajectory's own prior output being
+  replayed as untimestamped context, and the failure itself was untraceable
+  because no provider status, error type or request identifier was recorded.
+- **Verification performed:** Language audit, lint, strict TypeScript, fifteen
+  regression tests and the production build passed. The failure, stale-label,
+  retry and replacement path was exercised in a real browser; evidence is in
+  `docs/motion/`.
+- **Follow-up:** Re-test on physical iPhone Safari, and consider opting into
+  server-side provider fallbacks for policy declines.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -354,7 +522,19 @@ Changelog entries are append-only.
 
 ## Next Recommended Milestone
 
-**Open the production Auth acceptance path.**
+**Populate the open-work record from live sources.**
+
+Device acceptance on 6 August proved the motion system, the voice pipeline and
+signal grounding all work against production. It also showed that the open-work
+record is empty and no platform activity has registered in 24 hours. Trajectory
+now reports that honestly instead of recycling completed work, but an executive
+intelligence with no tracked work has nothing to reason over — every downstream
+capability is bounded by this. Connector ingestion is the highest-leverage next
+step for that reason.
+
+**Then: complete the remaining Issue #8 surfaces** — splash, launch transition,
+Daily Summary atmosphere, refresh, success and notification states — and **open
+the production Auth acceptance path.**
 
 Decide the Vercel Deployment Protection policy, configure production SMTP and
 safe email rate limits, then use a controlled mailbox to verify signup, email
