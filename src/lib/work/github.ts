@@ -1,6 +1,6 @@
 import "server-only";
 
-import { config } from "@/lib/config";
+import { config, githubIngestionDiagnostics } from "@/lib/config";
 import {
   normaliseGitHubIssue,
   normaliseGitHubPullRequest,
@@ -31,8 +31,9 @@ export class GitHubIngestionError extends Error {
   }
 }
 
+/** Kept in step with the health diagnostics so both read the same settings. */
 export function githubIngestionConfigured(): boolean {
-  return Boolean(config.githubToken && config.githubRepository);
+  return githubIngestionDiagnostics().configured;
 }
 
 async function fetchPage<T>(path: string): Promise<T[]> {

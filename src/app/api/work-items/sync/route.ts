@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { AuthenticationRequiredError } from "@/lib/auth/session";
 import { buildWorkBoard, rankOpenWork } from "@/lib/work/canonical";
-import { GitHubIngestionError, githubIngestionConfigured, ingestGitHubWorkItems } from "@/lib/work/github";
+import { githubIngestionDiagnostics } from "@/lib/config";
+import { GitHubIngestionError, ingestGitHubWorkItems } from "@/lib/work/github";
 import { listWorkItems, persistIngestedWorkItems } from "@/lib/work/repository";
 
 export const dynamic = "force-dynamic";
@@ -17,11 +18,21 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   const startedAt = Date.now();
   try {
-    if (!githubIngestionConfigured()) {
+    const ingestionDiagnostics = githubIngestionDiagnostics();
+    if (!ingestionDiagnostics.configured) {
+      // Naming the specific variable, and the deployment that cannot see it,
+      // is the difference between a five-minute fix and a guessing game: a
+      // deployment created before a variable was added never receives it,
+      // however the variable is set.
+      console.warn("[trajectory:work-sync]", {
+        event: "ingestion_unconfigured",
+        at: new Date().toISOString(),
+        ...ingestionDiagnostics,
+      });
       return NextResponse.json(
         {
-          error: "GitHub ingestion is not configured.",
-          missing: ["GITHUB_INGESTION_TOKEN", "GITHUB_INGESTION_REPOSITORY"],
+          error: `GitHub ingestion is not configured. This deployment cannot see ${ingestionDiagnostics.missing.join(" and ")}.`,
+          ...ingestionDiagnostics,
         },
         { status: 503 },
       );
