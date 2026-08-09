@@ -16,12 +16,39 @@ thinking while the user was away.
 
 ## Current Production State
 
-### Live open-work ingestion — accepted end to end (9 August 2026)
+### Live open-work ingestion — accepted in production (9 August 2026)
 
-PR #12 is proven against the real deployment. The full path was exercised on a
-physical device through the deployed Preview at commit
-`13509bb8625ff856605e1b9985c4503be220104a`, not through direct function calls
-and not against seeded data:
+**PR #12 is fully accepted in production.** After the merge, a production
+GitHub sync from the owner's authenticated account on a physical device
+ingested thirteen records — twelve plus the newly created issue #13 — and the
+production Launch Backlog rendered issue #13 and issue #8 as open, **nothing
+blocked**, and PR #12 under Recently Completed alongside PR #11 and PR #10.
+
+The Executive Signal generated at 18:57 recommended *"Correct the draft pull
+request status mapping so drafts no longer read as blocked [issue #13]"*,
+reasoning explicitly from the current open-work state. It did not treat PR #12
+as blocked or as available to recommend.
+
+That completes the transition this milestone existed to prove:
+
+> PR #12 blocked → merged → synced → `completed` → excluded from recommendation
+
+This is the direct answer to the defect that opened the sequence. On 6 August
+Trajectory recommended PR #7 after PR #7 had already merged. On 9 August, with
+the same class of event — a pull request merging mid-session — the completed
+item left the recommendable set on the next sync, and the signal moved to the
+next genuinely open item without being told to. The behaviour is now a
+property of the evidence layer rather than of prompt wording.
+
+The blocked status that the signal is now flagging is itself accurate
+reporting of a real modelling fault, tracked as issue #13 and deliberately
+unstarted.
+
+#### Preview acceptance evidence
+
+The full path was first exercised on a physical device through the deployed
+Preview at commit `13509bb8625ff856605e1b9985c4503be220104a`, not through
+direct function calls and not against seeded data:
 
 > live GitHub → `POST /api/work-items/sync` → Supabase `work_items` →
 > canonical ranking and evidence → provider prompt → new Executive Signal → UI
@@ -82,17 +109,19 @@ evidence. `main` is tree-identical to the merged branch tip. The language
 audit, ESLint, strict TypeScript and all forty-one regression tests pass on
 merged `main`.
 
-The production deployment for this merge has **not** been verified from the
-build environment: its network policy refuses outbound connections to the
-deployment host, Vercel and Supabase, and the GitHub integration available
-here exposes no deployment or commit-status record for a commit on `main`.
-Production `/api/health`, the continued presence of `work_items` in
-`trajectory-prod`, a production GitHub sync and the production Executive
-Signal therefore remain unconfirmed and must be checked from an unrestricted
-network. Note that `supabase/migrations/20260806160000_work_items.sql` reached
-`main` with this merge; it was already applied to `trajectory-prod` during
-acceptance, so no new migration is expected, but that should be confirmed
-rather than assumed.
+The production deployment succeeded and was accepted on a physical device the
+same day: a production GitHub sync ingested thirteen records, the Launch
+Backlog rendered the correct live state, and a fresh Executive Signal reasoned
+from it. `work_items` remains present in `trajectory-prod`;
+`supabase/migrations/20260806160000_work_items.sql` reached `main` with this
+merge but was already applied during acceptance, so no new migration ran. See
+*Live open-work ingestion — accepted in production* above for the evidence.
+
+This also clears the deployment-readiness question carried forward from PR
+#11: production is confirmed serving the merged code. The build environment
+still cannot reach the deployment host, Vercel or Supabase, so production
+verification remains a device-and-dashboard activity rather than something
+this repository's tooling can assert.
 
 PR #11 was squash-merged into `main` on 6 August 2026 as
 `667defa9bab20c0cde8ec8cd19e0a4815ca86904`, carrying the cinematic motion
@@ -499,8 +528,9 @@ entries must not be removed.
   to recommend naming the blocker, when the pull request was simply still being
   written. The status vocabulary conflates "cannot start" with "in flight".
   Expected outcome: a draft is tracked as in-progress work, and `blocked` is
-  reserved for items with a recorded cause. Non-blocking; recorded during PR
-  #12 acceptance and deliberately not held for it.
+  reserved for items with a recorded cause. Tracked as **issue #13**, and now
+  the item Trajectory itself nominates as highest-leverage. Not to be started
+  without an explicit go-ahead.
 - **Exercise the provider-failure and retry path on a physical device.** The
   stale-signal label and same-transcript retry are verified in desktop
   Chromium; the successful path is verified on device. Expected outcome:
@@ -734,6 +764,23 @@ Changelog entries are append-only.
   checks above from an unrestricted network. Issue #13 remains open and
   deliberately unstarted.
 
+### 9 August 2026 — Open-work ingestion accepted in production
+
+- **What changed:** Production acceptance closed the milestone. Nothing in the
+  product changed; this entry records the evidence.
+- **Why:** A merge is not an outcome. The milestone's claim was that completed
+  work cannot be recommended again, and only production could settle it.
+- **Verification performed:** A production GitHub sync from the owner's
+  authenticated account on a physical device ingested thirteen records. The
+  Launch Backlog showed issue #13 and issue #8 open, nothing blocked, and PR
+  #12 completed. The 18:57 Executive Signal recommended correcting the draft
+  status mapping [issue #13], reasoning from live work state and excluding PR
+  #12. The full transition — blocked, merged, synced, completed, excluded —
+  was observed end to end, which is the exact behaviour absent on 6 August when
+  a merged PR #7 was recommended.
+- **Follow-up:** Issue #13 is open and deliberately unstarted. The next
+  milestone is the production Auth acceptance path, not a second connector.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -783,11 +830,12 @@ answers what the orb actually asks — where Gmail needs a classification layer
 before it is anything but volume, and Slack pays off only with a team.
 
 **Non-blocking follow-ups carried forward:** a draft pull request normalising
-to `blocked` (see Remaining Work); the forced provider-failure and retry path
-and the reduced-motion path are verified in desktop Chromium but not on a
-physical device; production deployment readiness for `667defa` still needs
-confirming from an unrestricted network; live supersession awaits a genuine
-closed-unmerged pull request.
+to `blocked`, tracked as issue #13 and awaiting an explicit go-ahead; the
+forced provider-failure and retry path and the reduced-motion path are
+verified in desktop Chromium but not on a physical device; live supersession
+awaits a genuine closed-unmerged pull request. Production deployment
+readiness is no longer outstanding — production is confirmed serving the
+merged code.
 
 **Also: complete the remaining Issue #8 surfaces** — splash, launch transition,
 Daily Summary atmosphere, refresh, success and notification states. These are
