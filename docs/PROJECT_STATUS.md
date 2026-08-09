@@ -74,6 +74,26 @@ and logic level rather than by a second observed HTTP call.
 
 ### Merge status
 
+PR #12 was squash-merged into `main` on 9 August 2026 as
+`836cebb4cb822ca69f5ae6ca2f82ce7cfa7a1f7e`, carrying the canonical work-item
+model, GitHub ingestion, the launch backlog, evidence provenance and the
+`work_items` migration. The squash commit preserves the full acceptance
+evidence. `main` is tree-identical to the merged branch tip. The language
+audit, ESLint, strict TypeScript and all forty-one regression tests pass on
+merged `main`.
+
+The production deployment for this merge has **not** been verified from the
+build environment: its network policy refuses outbound connections to the
+deployment host, Vercel and Supabase, and the GitHub integration available
+here exposes no deployment or commit-status record for a commit on `main`.
+Production `/api/health`, the continued presence of `work_items` in
+`trajectory-prod`, a production GitHub sync and the production Executive
+Signal therefore remain unconfirmed and must be checked from an unrestricted
+network. Note that `supabase/migrations/20260806160000_work_items.sql` reached
+`main` with this merge; it was already applied to `trajectory-prod` during
+acceptance, so no new migration is expected, but that should be confirmed
+rather than assumed.
+
 PR #11 was squash-merged into `main` on 6 August 2026 as
 `667defa9bab20c0cde8ec8cd19e0a4815ca86904`, carrying the cinematic motion
 integration, the stale-history supersession fix, and the provider diagnostics
@@ -694,6 +714,25 @@ Changelog entries are append-only.
   unresolved obstacle; live supersession is unexercised because no pull request
   in this repository has been closed unmerged; open the production Auth
   acceptance path before adding a second source.
+
+### 9 August 2026 — Open-work ingestion merged to main
+
+- **What changed:** PR #12 was squash-merged into `main` as `836cebb`, after a
+  second live sync on the new Preview head left the canonical record set stable
+  with no duplication and the Launch Backlog updating correctly. The evidence
+  layer is now the default behaviour of the product rather than a branch.
+- **Why:** Every acceptance criterion that could be verified had been, on a
+  physical device and against the real database, and the value of a
+  current-state evidence layer only lands once it is live.
+- **Verification performed:** `main` is tree-identical to the merged branch
+  tip. Language audit, ESLint, strict TypeScript and forty-one regression tests
+  pass on merged `main`. Production deployment, production `/api/health`, the
+  continued presence of `work_items` in `trajectory-prod`, a production GitHub
+  sync and the production Executive Signal could **not** be verified from the
+  build environment — see Merge status above.
+- **Follow-up:** Confirm the production deployment and the four production
+  checks above from an unrestricted network. Issue #13 remains open and
+  deliberately unstarted.
 
 ## Engineering Principles
 
