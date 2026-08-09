@@ -17,6 +17,19 @@ export const ExecutiveSignalResponseSchema = z.object({
   urgency: z.number().min(0).max(1),
   trajectory: z.enum(["accelerating", "steady", "slipping", "stalled"]),
   riskLevel: z.enum(["low", "elevated", "high", "critical"]),
+  // Provenance for the work records this signal was permitted to reason from.
+  // Optional so signals persisted before ingestion existed still parse.
+  evidence: z
+    .array(
+      z.object({
+        workItemId: z.string(),
+        label: z.string(),
+        status: z.enum(["open", "active", "blocked", "completed", "superseded"]),
+        updatedAt: z.string(),
+        url: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type ExecutiveSignalResponse = z.infer<typeof ExecutiveSignalResponseSchema>;

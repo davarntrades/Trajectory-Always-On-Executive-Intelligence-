@@ -36,7 +36,7 @@ export default async function Home() {
   };
 
   return <>
-    <TrajectoryExperience ownerName={ownerName} state={experienceState} providers={providers} defaultProvider={preferredProvider} initialSignal={latestSignal} />
+    <TrajectoryExperience ownerName={ownerName} state={experienceState} providers={providers} defaultProvider={preferredProvider} initialSignal={latestSignal} showLaunchBacklog={Boolean(user)} />
     {profile ? <EntryExperiences initialProfile={profile} initialCheckIn={checkIn} showMorningCheckIn={showCheckIn} providers={providers} /> : null}
   </>;
 }

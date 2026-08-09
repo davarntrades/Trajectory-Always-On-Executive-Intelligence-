@@ -29,6 +29,10 @@ export const config = {
   appUrl: cleanValue(process.env.NEXT_PUBLIC_APP_URL) ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
   connectorEncryptionKey: cleanSecret(process.env.CONNECTOR_ENCRYPTION_KEY),
   cronSecret: cleanSecret(process.env.CRON_SECRET),
+  // Open-work ingestion. Read-only repository scope is sufficient; nothing in
+  // this path writes to GitHub.
+  githubToken: cleanSecret(process.env.GITHUB_INGESTION_TOKEN),
+  githubRepository: normaliseRepositorySetting(process.env.GITHUB_INGESTION_REPOSITORY),
   ownerId: cleanValue(process.env.TRAJECTORY_OWNER_ID) ?? "00000000-0000-0000-0000-000000000001",
   ownerName: cleanValue(process.env.TRAJECTORY_OWNER_NAME) ?? "Davarn",
   timezone: cleanValue(process.env.TRAJECTORY_TIMEZONE) ?? "Europe/London",
@@ -60,6 +64,58 @@ export function productionEnvironmentStatus() {
     if (config.appUrl === "http://localhost:3000") missing.push("NEXT_PUBLIC_APP_URL");
   }
   return { ready: missing.length === 0, missing };
+}
+
+/**
+ * Normalises a repository setting to `owner/name`.
+ *
+ * A full clone URL is the natural thing to paste, and it would otherwise pass
+ * the configured check and then fail later as a 404 from GitHub — a much
+ * harder failure to attribute than a missing variable.
+ */
+export function normaliseRepositorySetting(value: string | undefined): string | undefined {
+  const trimmed = cleanValue(value);
+  if (!trimmed) return undefined;
+  return trimmed
+    .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+    .replace(/^git@github\.com:/i, "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "")
+    .trim() || undefined;
+}
+
+/**
+ * Whether the running deployment can actually see the ingestion settings, and
+ * which build it is.
+ *
+ * Reports presence and shape only — never a secret value. Vercel injects
+ * environment variables per deployment, so a deployment created before a
+ * variable was added will never see it no matter how the variable is set;
+ * `deploymentId` and `gitCommitSha` are what make that visible rather than
+ * something to guess at.
+ */
+export function githubIngestionDiagnostics() {
+  const token = cleanSecret(process.env.GITHUB_INGESTION_TOKEN);
+  const repository = normaliseRepositorySetting(process.env.GITHUB_INGESTION_REPOSITORY);
+  const missing: string[] = [];
+  if (!token) missing.push("GITHUB_INGESTION_TOKEN");
+  if (!repository) missing.push("GITHUB_INGESTION_REPOSITORY");
+
+  return {
+    configured: missing.length === 0,
+    missing,
+    tokenPresent: Boolean(token),
+    /** Length only, so an empty or truncated paste is visible without exposing the token. */
+    tokenLength: token?.length ?? 0,
+    /** A repository slug is not a secret and is the value most likely to be wrong. */
+    repository: repository ?? null,
+    repositoryLooksValid: /^[\w.-]+\/[\w.-]+$/.test(repository ?? ""),
+    repositoryWasNormalised: Boolean(repository) && repository !== cleanValue(process.env.GITHUB_INGESTION_REPOSITORY),
+    vercelEnv: process.env.VERCEL_ENV ?? "unknown",
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_URL ?? "unknown",
+    gitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown",
+    gitBranch: process.env.VERCEL_GIT_COMMIT_REF ?? "unknown",
+  };
 }
 
 export function providerRuntimeDiagnostics(requestedProvider: string) {

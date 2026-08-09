@@ -11,6 +11,7 @@ import {
   usePrefersReducedMotion,
   useSignalTransition,
 } from "@/components/trajectory/celestial-motion";
+import { LaunchBacklog } from "@/components/trajectory/launch-backlog";
 import { presentSignal } from "@/lib/voice/signal-freshness";
 import { submittedTranscript, transcriptForDisplay } from "@/lib/voice/transcript";
 import type { ProviderOption, ProviderPreference } from "@/lib/providers/types";
@@ -74,12 +75,14 @@ function isSignal(value: unknown): value is ExecutiveSignalResponse {
     && ["low", "elevated", "high", "critical"].includes(String(signal.riskLevel));
 }
 
-export function TrajectoryExperience({ ownerName, state, providers, defaultProvider, initialSignal = null }: {
+export function TrajectoryExperience({ ownerName, state, providers, defaultProvider, initialSignal = null, showLaunchBacklog = false }: {
   ownerName: string;
   state: ExperienceState;
   providers: ProviderOption[];
   defaultProvider: ProviderPreference;
   initialSignal?: ExecutiveSignalResponse | null;
+  /** Rendered only for an authenticated workspace, which is where work items live. */
+  showLaunchBacklog?: boolean;
 }) {
   const voiceSupported = useSyncExternalStore(subscribeNoop, supportsVoice, () => true);
   const [rawStatus, setStatus] = useState<VoiceStatus>("idle");
@@ -405,6 +408,7 @@ export function TrajectoryExperience({ ownerName, state, providers, defaultProvi
           <div className="briefing-details"><div><span>{language.headings.currentState}</span><p>{displayedState}</p></div><div><span>{language.headings.currentDynamics}</span><p>{displayedConstraint}</p></div><div><span>{language.headings.expectedShift}</span><p>{displayedImpact}</p></div><div><span>{language.headings.trajectoryLogic}</span><p>{displayedReasoning}</p></div>{displayedSignal ? <><div><span>Confidence</span><p>{Math.round(displayedSignal.confidence * 100)}%</p></div><div><span>Urgency</span><p>{Math.round(displayedSignal.urgency * 100)}%</p></div><div><span>Suggested next action</span><p>{displayedSignal.suggestedNextAction}</p></div></> : null}</div>
         </div>
       </section>
+      {showLaunchBacklog ? <LaunchBacklog /> : null}
     </main>
   );
 }

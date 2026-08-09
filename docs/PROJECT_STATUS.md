@@ -16,6 +16,62 @@ thinking while the user was away.
 
 ## Current Production State
 
+### Live open-work ingestion — accepted end to end (9 August 2026)
+
+PR #12 is proven against the real deployment. The full path was exercised on a
+physical device through the deployed Preview at commit
+`13509bb8625ff856605e1b9985c4503be220104a`, not through direct function calls
+and not against seeded data:
+
+> live GitHub → `POST /api/work-items/sync` → Supabase `work_items` →
+> canonical ranking and evidence → provider prompt → new Executive Signal → UI
+
+**Database, verified on the real `trajectory-prod` project.** `work_items`
+exists with RLS enabled and per-user SELECT, INSERT, UPDATE and DELETE
+policies. Status constraints cover `open`, `active`, `blocked`, `completed`
+and `superseded`; the completion and supersession timestamp invariants hold;
+`(user_id, canonical_id)` is unique.
+
+**Ingestion.** A live sync ingested twelve GitHub-derived records: ten
+completed, one open, one blocked. PR #11 is stored `completed` with a
+`completed_at` equal to its real GitHub merge time
+(`2026-08-06T14:54:42Z`). PR #12 is stored `blocked`, consistent with it being
+a draft at the time of ingestion.
+
+**Reconciliation against live GitHub, re-checked 9 August.** The repository
+contains eleven pull requests and one issue. Ten pull requests are merged and
+resolve to `completed`; PR #12 was open and draft and resolved to `blocked`;
+issue #8 is open and resolves to `open`. Twelve records, twelve canonical IDs,
+no drift. Normalisation keys off `merged_at` rather than the list endpoint's
+`merged` field, which reports `false` even for merged pull requests — a
+regression test now pins that behaviour to the real payload shape.
+
+**Signal grounding.** With the canonical set populated, the Executive Signal
+generated at 16:29 identified issue #8 as open and PR #12 as blocked, cited
+`[PR #12]` and `[issue #8]`, and recommended none of the completed pull
+requests #7, #9, #10 or #11. The Launch Backlog beneath it rendered the same
+state. This is the behaviour the stale-recommendation defect made impossible,
+now demonstrated against live evidence rather than asserted.
+
+**Live supersession remains unexercised.** No pull request in this repository
+has ever been closed without merging, so no natural `superseded` record exists
+and the rule has not been proven against live data. It is covered by the
+database check constraint tying `superseded_at` to the status, and by unit
+tests for both routes into it — a pull request closed unmerged, and an issue
+closed as `not_planned`. The first genuine closed-unmerged pull request will
+exercise it; until one occurs this is a known evidence gap rather than a
+suspected defect.
+
+**Idempotency.** Re-ingesting the same GitHub state cannot duplicate records:
+canonical IDs are deterministic (`source:repository#number`), persistence
+upserts on `(user_id, canonical_id)`, and the database enforces that pair as
+unique. A regression test re-ingests the full twelve-record live payload set
+and asserts the count stays at twelve with stable, distinct IDs. Confirming
+the second live sync through the deployed route was not possible from the
+build environment, whose network policy refuses outbound connections to the
+deployment host, Vercel and Supabase; the mechanism is proven at the schema
+and logic level rather than by a second observed HTTP call.
+
 ### Merge status
 
 PR #11 was squash-merged into `main` on 6 August 2026 as
@@ -329,6 +385,43 @@ entries must not be removed.
   milestone — the same acceptance run that passed also reported an empty
   open-work record and no platform activity in 24 hours.
 
+### 6 August 2026 — Live open-work ingestion and launch backlog (in review)
+
+- **Version or PR:** Branch `agent/live-open-work-ingestion`, draft pull
+  request into `main`.
+- **Summary:** Gave Trajectory a current-state evidence layer. Until now it had
+  no authoritative record of what was still open, which is why completed work
+  was the only material available to recommend.
+- **Key achievements:** A canonical work-item schema with five explicit
+  statuses — open, active, blocked, completed, superseded — plus completion,
+  last-updated, supersession and reopened timestamps, persisted in a
+  user-scoped `work_items` table whose check constraints refuse a completed
+  item without a completion timestamp. Manual launch tasks and GitHub issue and
+  pull-request ingestion write to the same schema. Merged pull requests and
+  closed issues become completed; pull requests closed unmerged and issues
+  closed as not planned become superseded; an explicitly reopened issue is the
+  only route back into the open set. Completed and superseded work is filtered
+  out at selection rather than left to prompt wording, so no caller can
+  reintroduce it. Exactly one active priority is enforced on write. The open
+  work set, the active priority and the completed set are all passed into
+  Executive Signal prompt construction, and every generated signal carries
+  evidence references — work-item id, citation label, status and timestamp —
+  so a recommendation can be traced to the record that justified it. A launch
+  backlog surface shows the active priority, the next three open items, blocked
+  items and recently completed items, reusing the existing card material.
+- **Verification status:** Language audit, ESLint, strict TypeScript,
+  thirty-three tests and the production build pass. Eighteen new tests cover
+  GitHub normalisation, the reopened exception, exclusion of completed work
+  from the prompt, single active priority, board composition, evidence
+  provenance and re-ingestion merge. The board was rendered in Chromium at
+  desktop and 390 px widths with no horizontal overflow. **No live GitHub
+  ingestion has been run** — the build environment's network policy blocks
+  api.github.com — so the adapter's request path is unproven against the real
+  API.
+- **Follow-up:** Run a live sync against the Trajectory repository, apply the
+  `work_items` migration to production, and confirm the ingested board on a
+  physical device.
+
 ## Current Architecture
 
 - **Frontend:** Next.js 16 App Router, React 19 and TypeScript. The client-side
@@ -379,11 +472,15 @@ entries must not be removed.
   specified and have primitives available, but are not yet built into the
   product. Expected outcome: the full cinematic motion system rather than the
   home experience alone.
-- **Populate the open-work record from live sources.** The 6 August device
-  acceptance surfaced an empty open-work record and no platform activity in the
-  preceding 24 hours, so Trajectory has no live evidence base to prioritise
-  against. Expected outcome: recommendations grounded in tracked work rather
-  than in the absence of it.
+- **Distinguish a work-in-progress draft from a genuinely blocked item.** A
+  draft pull request currently normalises to `blocked`, which reads to the
+  model as an unresolved external obstacle. During live acceptance this led the
+  Executive Signal to describe PR #12 as "blocked with no recorded cause" and
+  to recommend naming the blocker, when the pull request was simply still being
+  written. The status vocabulary conflates "cannot start" with "in flight".
+  Expected outcome: a draft is tracked as in-progress work, and `blocked` is
+  reserved for items with a recorded cause. Non-blocking; recorded during PR
+  #12 acceptance and deliberately not held for it.
 - **Exercise the provider-failure and retry path on a physical device.** The
   stale-signal label and same-transcript retry are verified in desktop
   Chromium; the successful path is verified on device. Expected outcome:
@@ -571,6 +668,33 @@ Changelog entries are append-only.
   network, exercise the forced provider-failure and retry path on a physical
   device, and begin connector/open-work ingestion.
 
+### 9 August 2026 — Live open-work ingestion accepted end to end
+
+- **What changed:** The canonical work model, GitHub ingestion, launch backlog
+  and evidence provenance built in PR #12 were proven against the real
+  deployment and the real `trajectory-prod` database, and the branch was marked
+  ready for review.
+- **Why:** The 6 August device acceptance showed an empty open-work record.
+  Building an evidence layer and proving one are different milestones, and only
+  a live run through the deployed route settles whether recommendations are
+  grounded in tracked work.
+- **Verification performed:** A live sync through `POST /api/work-items/sync`
+  on Preview commit `13509bb` ingested twelve GitHub-derived records — ten
+  completed, one open, one blocked — with PR #11 carrying its true merge
+  timestamp. The subsequent Executive Signal cited `[PR #12]` and `[issue #8]`
+  and recommended none of the completed pull requests #7, #9, #10 or #11.
+  Records reconcile exactly against live GitHub, re-checked on 9 August.
+  Forty-one regression tests, the language audit, ESLint, strict TypeScript and
+  the production build all pass. The second live sync could not be executed
+  from the build environment, whose network policy blocks the deployment host,
+  Vercel and Supabase; idempotency is proven by deterministic canonical IDs, an
+  upsert on `(user_id, canonical_id)`, the unique constraint, and a regression
+  test that re-ingests the full live payload set.
+- **Follow-up:** Draft pull requests normalise to `blocked` and read as an
+  unresolved obstacle; live supersession is unexercised because no pull request
+  in this repository has been closed unmerged; open the production Auth
+  acceptance path before adding a second source.
+
 ## Engineering Principles
 
 - **State first, not chat first.** Interfaces read a computed executive state;
@@ -595,29 +719,38 @@ Changelog entries are append-only.
 
 ## Next Recommended Milestone
 
-**Populate the open-work record from live sources.**
+**Open the production Auth acceptance path.**
 
-With PR #11 merged, device acceptance on 6 August proved the motion system, the
-voice pipeline and signal grounding all work against production. It also showed
-that the open-work record is empty and no platform activity has registered in
-24 hours. Trajectory now reports that honestly instead of recycling completed
-work, but an executive intelligence with no tracked work has nothing to reason
-over — every downstream capability is bounded by this. Connector ingestion is
-the highest-leverage next step for that reason, and no ingestion work has been
-started yet.
+The evidence layer is now closed. Live acceptance on 9 August proved the whole
+chain from GitHub through the deployed sync route to a grounded Executive
+Signal, which removes the constraint that bounded every downstream capability:
+Trajectory has real open work to reason over, and completed work demonstrably
+cannot resurface.
 
-**Non-blocking follow-ups carried forward from PR #11:** the forced
-provider-failure and retry path and the reduced-motion path are verified in
-desktop Chromium but not on a physical device; production deployment readiness
-for `667defa` still needs confirming from an unrestricted network.
+The binding constraint is now access. Trajectory has exactly one user who can
+reach it. Password Auth, RLS and persistence are proven, so what remains is
+platform access and transactional email: decide the Vercel Deployment
+Protection policy, configure production SMTP with safe rate limits, then use a
+controlled mailbox to verify signup, email confirmation, password recovery and
+session persistence on mobile and desktop. Until that lands, every further
+feature is built for an audience of one.
 
-**Then: complete the remaining Issue #8 surfaces** — splash, launch transition,
-Daily Summary atmosphere, refresh, success and notification states — and **open
-the production Auth acceptance path.**
+**Connectors come after that, and Calendar comes first.** GitHub is the one
+source where completion is unambiguous, which is what made it the right
+proving ground; a second source multiplies the ways the open-work set can go
+stale, so it should only be added once the first is trusted in daily use.
+Calendar is the strongest candidate — structured, bounded, low-noise, and it
+answers what the orb actually asks — where Gmail needs a classification layer
+before it is anything but volume, and Slack pays off only with a team.
 
-Decide the Vercel Deployment Protection policy, configure production SMTP and
-safe email rate limits, then use a controlled mailbox to verify signup, email
-confirmation, password recovery and session persistence on mobile and desktop.
-This is the highest-impact next step because password Auth, RLS and persistence
-are proven, while platform access and transactional email are the remaining
-constraints on real-user acceptance testing.
+**Non-blocking follow-ups carried forward:** a draft pull request normalising
+to `blocked` (see Remaining Work); the forced provider-failure and retry path
+and the reduced-motion path are verified in desktop Chromium but not on a
+physical device; production deployment readiness for `667defa` still needs
+confirming from an unrestricted network; live supersession awaits a genuine
+closed-unmerged pull request.
+
+**Also: complete the remaining Issue #8 surfaces** — splash, launch transition,
+Daily Summary atmosphere, refresh, success and notification states. These are
+polish on a product that now has something to say, and should follow access
+rather than precede it.

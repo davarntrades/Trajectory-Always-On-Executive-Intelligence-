@@ -21,6 +21,8 @@ every component, style and state transition shown is the production code path.
 | `10-mark-eyebrow.png` | The shooting-star mark beside Executive Signal |
 | `11-stale-signal.png` | Provider failure — the previous signal is preserved but labelled `Last valid signal · 02:37` |
 | `12-retry-replaced.png` | Successful retry — the replacement signal takes over and the stale marker clears |
+| `13-launch-backlog.png` | Launch backlog: active priority, next open, blocked, recently completed |
+| `14-launch-backlog-mobile.png` | The same board at 390 px, single column, no horizontal overflow |
 
 The approved source designs these are compared against live in
 `public/brand/trajectory-concepts/`.

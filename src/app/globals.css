@@ -456,6 +456,97 @@ button { font: inherit; }
 .briefing-details p { margin: 7px 0 0; color: #aab6c8; font-size: 11px; line-height: 1.55; }
 .experience-footer { margin-top: 20px; color: #526176; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
 
+/* Launch backlog — the evidence layer behind a recommendation. It reuses the
+   briefing card's material deliberately: this is supporting detail, not a
+   second focal point competing with the orb. */
+.work-board {
+  position: relative;
+  z-index: 5;
+  width: min(920px, 100%);
+  margin: 14px auto 0;
+  padding: 18px 24px 20px;
+  border: 1px solid rgba(176, 202, 236, .1);
+  border-radius: 20px;
+  background: linear-gradient(130deg, rgba(16,26,43,.5), rgba(7,12,22,.42));
+  backdrop-filter: blur(18px) saturate(115%);
+  opacity: 0;
+  animation: card-reveal 1.1s cubic-bezier(.16,.84,.24,1) 5.2s forwards;
+}
+.work-sync {
+  padding: 5px 12px;
+  border: 1px solid rgba(176,202,236,.16);
+  border-radius: 999px;
+  background: rgba(9,17,29,.7);
+  color: #9bb7d8;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.work-sync:disabled { opacity: .5; cursor: default; }
+.work-columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; margin-top: 18px; }
+.work-columns > div > span {
+  display: block;
+  margin-bottom: 9px;
+  color: #6e7f95;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+.work-columns ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.work-item { display: grid; gap: 3px; }
+.work-item a, .work-item > span { display: grid; gap: 2px; color: inherit; text-decoration: none; }
+.work-item a:hover .work-item-title { color: #eaf4ff; }
+.work-item-title { color: #aab6c8; font-size: 11px; line-height: 1.45; }
+.work-item-reference { color: #64748c; font-size: 9px; letter-spacing: .08em; }
+.work-item.is-active .work-item-title { color: #eaf4ff; }
+.work-item.is-active .work-item-reference { color: #8fd8bd; }
+.work-item.is-blocked .work-item-title { color: #93a1b6; }
+.work-item.is-blocked .work-item-reference { color: #e8c477; }
+.work-item.is-completed .work-item-title { color: #6f7d90; text-decoration: line-through; text-decoration-color: rgba(120,136,158,.5); }
+.work-item-activate {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #5f7590;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.work-item-activate:hover { color: #9bc9ff; }
+.work-empty { margin: 0; color: #64748c; font-size: 11px; line-height: 1.5; }
+.work-empty-wide { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(175,204,240,.09); }
+.work-compose { display: flex; gap: 8px; margin-top: 18px; padding-top: 15px; border-top: 1px solid rgba(175,204,240,.09); }
+.work-compose input {
+  flex: 1;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(176,202,236,.14);
+  border-radius: 999px;
+  outline: none;
+  background: rgba(5,10,18,.62);
+  color: #e9f2ff;
+  font: inherit;
+  font-size: 12px;
+}
+.work-compose input:focus-visible { border-color: rgba(112,183,255,.5); box-shadow: 0 0 0 3px rgba(112,183,255,.09); }
+.work-compose button {
+  min-height: 36px;
+  padding: 0 18px;
+  border: 1px solid rgba(112,183,255,.34);
+  border-radius: 999px;
+  background: rgba(37,62,97,.32);
+  color: #dceaff;
+  font-size: 11px;
+  cursor: pointer;
+}
+.work-compose button:disabled { opacity: .45; cursor: default; }
+.work-message { margin: 10px 0 0; color: #8fa1b8; font-size: 11px; }
+
 @keyframes drift-stars { to { transform: translate3d(4%, 3%, 0); } }
 @keyframes stars-awaken { from { opacity: 0; filter: brightness(.45); } to { opacity: 1; filter: brightness(1); } }
 @keyframes nebula-breathe { to { transform: scale(1.1) translate3d(1.5%, -1%, 0); opacity: .62; } }
@@ -538,6 +629,8 @@ button { font: inherit; }
   .briefing-card { padding: 19px; border-radius: 18px; }
   .briefing-details { grid-template-columns: 1fr; gap: 14px; }
   .briefing-details div + div { padding: 14px 0 0; border-top: 1px solid rgba(175,204,240,.09); border-left: 0; }
+  .work-board { padding: 16px 19px 18px; border-radius: 18px; }
+  .work-columns { grid-template-columns: 1fr; gap: 16px; }
   .experience-footer span:last-child { display: none; }
   .edge-light { inset: 5px; border-radius: 22px; }
 }

@@ -113,6 +113,10 @@ but a production deployment needs all four variables marked **Required** in
 | `DELETE /api/connectors/:id` | Disconnect and erase stored credentials |
 | `POST /api/connectors/:id/sync` | Run connector credential/health synchronization |
 | `GET /api/cron/intelligence` | Vercel Cron executive-signal refresh; requires `CRON_SECRET` |
+| `GET /api/work-items` | Canonical work board: active priority, next open, blocked, recently completed |
+| `POST /api/work-items` | Create a manual launch task |
+| `PATCH /api/work-items` | Change a work item's status, or promote it to the active priority |
+| `POST /api/work-items/sync` | Ingest current GitHub issues and pull requests |
 
 Ingest an event and watch the state change:
 
@@ -161,6 +165,11 @@ defines the daily background-intelligence schedule; no custom build output is re
    - `CONNECTOR_ENCRYPTION_KEY`
    - `CRON_SECRET`
    - at least one provider API key
+   - `GITHUB_INGESTION_TOKEN` and `GITHUB_INGESTION_REPOSITORY` (optional) to
+     ingest open work from GitHub. The token needs read-only repository scope;
+     nothing in this path writes to GitHub. Without them the launch backlog
+     still works for manually created tasks and `/api/work-items/sync` reports
+     `503` rather than failing silently.
 
    Apply every migration in `supabase/migrations/` in filename order to a
    **dedicated Trajectory Supabase project**. Configure email verification plus
