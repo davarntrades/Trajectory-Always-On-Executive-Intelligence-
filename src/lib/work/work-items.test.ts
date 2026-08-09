@@ -287,3 +287,84 @@ test("manual launch tasks are untouched by GitHub ingestion", () => {
   assert.equal(merged.find((entry) => entry.id === manual.id)?.status, "active");
   assert.equal(merged.length, 2);
 });
+
+// --- Idempotency against the repository's real payload shape ---------------
+
+/**
+ * The eleven pull requests and one issue that existed at live acceptance,
+ * with the fields ingestion actually reads. Note `merged: false` alongside a
+ * populated `merged_at`: the list endpoint really does report it that way, so
+ * normalisation keys off `merged_at` and this fixture preserves the trap.
+ */
+const LIVE_PULLS = [
+  { number: 12, title: "Live open-work ingestion and launch backlog", state: "open", draft: true, created_at: "2026-08-06T15:21:02Z", updated_at: "2026-08-06T17:56:09Z" },
+  { number: 11, title: "Wire cinematic motion into the live Trajectory experience", state: "closed", merged_at: "2026-08-06T14:54:42Z", closed_at: "2026-08-06T14:54:42Z", created_at: "2026-08-06T12:59:34Z", updated_at: "2026-08-06T14:54:42Z" },
+  { number: 10, title: "Sync latest Trajectory motion work into main", state: "closed", merged_at: "2026-08-06T03:16:16Z", closed_at: "2026-08-06T03:16:16Z", created_at: "2026-08-06T03:16:06Z", updated_at: "2026-08-06T03:16:16Z" },
+  { number: 9, title: "Start cinematic motion foundation", state: "closed", merged_at: "2026-08-06T03:11:56Z", closed_at: "2026-08-06T03:11:56Z", created_at: "2026-08-06T02:51:16Z", updated_at: "2026-08-06T03:11:56Z" },
+  { number: 7, title: "Repair voice pipeline and add personalization check-ins", state: "closed", merged_at: "2026-08-06T02:41:34Z", closed_at: "2026-08-06T02:41:34Z", created_at: "2026-08-05T18:46:30Z", updated_at: "2026-08-06T02:41:34Z" },
+  { number: 6, title: "Global Trajectory language and motion system", state: "closed", merged_at: "2026-08-05T18:34:20Z", closed_at: "2026-08-05T18:34:20Z", created_at: "2026-08-05T17:34:32Z", updated_at: "2026-08-05T18:34:20Z" },
+  { number: 5, title: "Record production authentication verification", state: "closed", merged_at: "2026-08-04T23:48:55Z", closed_at: "2026-08-04T23:48:55Z", created_at: "2026-08-04T23:48:27Z", updated_at: "2026-08-04T23:48:55Z" },
+  { number: 4, title: "Activate production Supabase workspaces", state: "closed", merged_at: "2026-08-04T23:43:00Z", closed_at: "2026-08-04T23:43:00Z", created_at: "2026-08-04T23:41:11Z", updated_at: "2026-08-04T23:43:00Z" },
+  { number: 3, title: "Build the multi-user Trajectory SaaS foundation", state: "closed", merged_at: "2026-08-04T22:54:42Z", closed_at: "2026-08-04T22:54:42Z", created_at: "2026-08-04T22:53:11Z", updated_at: "2026-08-04T22:54:42Z" },
+  { number: 2, title: "Add OpenAI as a selectable intelligence provider", state: "closed", merged_at: "2026-08-04T22:14:53Z", closed_at: "2026-08-04T22:14:53Z", created_at: "2026-08-04T22:14:30Z", updated_at: "2026-08-04T22:14:53Z" },
+  { number: 1, title: "Prepare Trajectory for production deployment", state: "closed", merged_at: "2026-08-04T21:28:49Z", closed_at: "2026-08-04T21:28:49Z", created_at: "2026-08-04T21:27:56Z", updated_at: "2026-08-04T21:28:49Z" },
+].map((pull) => ({ ...pull, html_url: `https://github.com/${REPO}/pull/${pull.number}` }));
+
+const LIVE_ISSUES = [
+  {
+    number: 8,
+    title: "Trajectory — Cinematic Motion System & Visual Identity",
+    state: "open",
+    html_url: `https://github.com/${REPO}/issues/8`,
+    created_at: "2026-08-06T02:46:56Z",
+    updated_at: "2026-08-06T02:46:56Z",
+  },
+];
+
+const ingestLive = () => [
+  ...LIVE_ISSUES.map((issue) => normaliseGitHubIssue(issue, REPO)),
+  ...LIVE_PULLS.map((pull) => normaliseGitHubPullRequest(pull, REPO)),
+];
+
+test("the live payload set resolves to the statuses observed in production", () => {
+  const tally = ingestLive().reduce<Record<string, number>>(
+    (counts, entry) => ({ ...counts, [entry.status]: (counts[entry.status] ?? 0) + 1 }),
+    {},
+  );
+  assert.deepEqual(tally, { completed: 10, blocked: 1, open: 1 });
+});
+
+test("re-ingesting the same GitHub state does not create duplicate records", () => {
+  // This is the pure-logic half of the second-sync proof. The other half is
+  // the database: canonical_id is deterministic and (user_id, canonical_id)
+  // is unique, so an upsert on the same set rewrites rows rather than adding.
+  const first = mergeIngested([], ingestLive());
+  const second = mergeIngested(first, ingestLive());
+
+  assert.equal(first.length, 12);
+  assert.equal(second.length, 12, "a second sync must not grow the record set");
+  assert.deepEqual(
+    second.map((entry) => entry.id).sort(),
+    first.map((entry) => entry.id).sort(),
+    "canonical ids are stable across runs",
+  );
+  assert.equal(new Set(second.map((entry) => entry.id)).size, 12, "every canonical id is distinct");
+});
+
+test("every completed live record carries a completion timestamp, and only those", () => {
+  for (const entry of ingestLive()) {
+    if (entry.status === "completed") {
+      assert.ok(entry.completedAt, `${entry.id} is completed and must carry completedAt`);
+    } else {
+      assert.equal(entry.completedAt, undefined, `${entry.id} is ${entry.status} and must not carry completedAt`);
+    }
+    assert.ok(entry.externalRef?.url, `${entry.id} must carry provenance`);
+    assert.equal(entry.externalRef?.repository, REPO);
+  }
+});
+
+test("PR #11 records the merge time GitHub reported, not the ingestion time", () => {
+  const eleven = ingestLive().find((entry) => entry.externalRef?.number === 11 && entry.source === "github_pull_request");
+  assert.equal(eleven?.status, "completed");
+  assert.equal(eleven?.completedAt, "2026-08-06T14:54:42Z");
+});
