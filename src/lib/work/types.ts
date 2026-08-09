@@ -16,6 +16,10 @@
 /**
  * The five statuses. `completed` and `superseded` are terminal for the purpose
  * of recommendation: neither may ever be offered as something to do next.
+ *
+ * `blocked` means an obstruction has actually been recorded — a blocked label
+ * at the source, or a local `blockedBy` link. It does not mean "unfinished".
+ * Everything open is unfinished; that is what open means.
  */
 export const workItemStatuses = ["open", "active", "blocked", "completed", "superseded"] as const;
 export type WorkItemStatus = (typeof workItemStatuses)[number];
@@ -37,7 +41,21 @@ export interface WorkItem {
   status: WorkItemStatus;
   source: WorkItemSource;
   externalRef?: ExternalReference;
-  /** Ids of items that must complete before this one can start. */
+  /**
+   * Source metadata, not a status: the item is still being written.
+   *
+   * A draft pull request used to normalise to `blocked`, which read to the
+   * model as an unresolved external obstacle and produced advice like "write
+   * PR #12's blocker in one sentence" for a pull request that was simply
+   * unfinished. Draft-ness is orthogonal to whether anything is obstructing
+   * the work, so it is carried alongside the status rather than inside it.
+   */
+  draft?: boolean;
+  /**
+   * Ids of items that must complete before this one can start. A non-empty
+   * list is itself evidence of obstruction, and is one of the two things that
+   * can make an item `blocked`.
+   */
   blockedBy: string[];
   createdAt: string;
   /** Last time anything about this item changed, at the source of truth. */

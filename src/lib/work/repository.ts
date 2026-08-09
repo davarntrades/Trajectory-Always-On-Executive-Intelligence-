@@ -19,6 +19,7 @@ type Row = {
   external_repository: string | null;
   external_number: number | null;
   external_url: string | null;
+  draft: boolean | null;
   blocked_by: string[] | null;
   created_at: string;
   updated_at: string;
@@ -38,7 +39,7 @@ function detailOf(cause: { message: string }): string {
 }
 
 const COLUMNS =
-  "canonical_id, title, detail, status, source, external_repository, external_number, external_url, blocked_by, created_at, updated_at, completed_at, superseded_at, superseded_by, reopened_at";
+  "canonical_id, title, detail, status, source, external_repository, external_number, external_url, draft, blocked_by, created_at, updated_at, completed_at, superseded_at, superseded_by, reopened_at";
 
 function toWorkItem(row: Row): WorkItem {
   return {
@@ -55,6 +56,7 @@ function toWorkItem(row: Row): WorkItem {
             url: row.external_url ?? "",
           }
         : undefined,
+    draft: row.draft ? true : undefined,
     blockedBy: row.blocked_by ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -76,6 +78,9 @@ function toRow(item: WorkItem, userId: string) {
     external_repository: item.externalRef?.repository ?? null,
     external_number: item.externalRef?.number ?? null,
     external_url: item.externalRef?.url ?? null,
+    // Source metadata, deliberately not folded into status. Terminal work is
+    // never in progress, so the flag is cleared rather than carried forward.
+    draft: item.status === "completed" || item.status === "superseded" ? false : Boolean(item.draft),
     blocked_by: item.blockedBy,
     created_at: item.createdAt,
     updated_at: item.updatedAt,

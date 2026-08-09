@@ -218,6 +218,7 @@ async function createBriefing(input: z.infer<typeof RequestBody>) {
           kind: item.status,
           reference: evidenceLabel(item),
           active: item.id === activePriority?.id,
+          draft: item.draft === true,
           updatedAt: item.updatedAt,
         }))
       : state.signals.candidates.map((candidate) => ({ title: candidate.title, kind: candidate.kind }));

@@ -99,6 +99,18 @@ build environment, whose network policy refuses outbound connections to the
 deployment host, Vercel and Supabase; the mechanism is proven at the schema
 and logic level rather than by a second observed HTTP call.
 
+### Pending migration
+
+`supabase/migrations/20260809190000_work_item_draft_state.sql` adds a
+`draft boolean not null default false` column to `work_items` for issue #13.
+
+**It must be applied before the issue #13 code is deployed.** The new code
+upserts the column; against a table without it, PostgREST rejects the write and
+the whole sync fails. The migration is additive and changes no status value, no
+constraint and no existing row, so the currently deployed code continues to run
+against the migrated table unchanged — which means it can safely be applied
+first, on its own, without coordinating a cutover.
+
 ### Merge status
 
 PR #12 was squash-merged into `main` on 9 August 2026 as
@@ -521,16 +533,16 @@ entries must not be removed.
   specified and have primitives available, but are not yet built into the
   product. Expected outcome: the full cinematic motion system rather than the
   home experience alone.
-- **Distinguish a work-in-progress draft from a genuinely blocked item.** A
-  draft pull request currently normalises to `blocked`, which reads to the
-  model as an unresolved external obstacle. During live acceptance this led the
-  Executive Signal to describe PR #12 as "blocked with no recorded cause" and
-  to recommend naming the blocker, when the pull request was simply still being
-  written. The status vocabulary conflates "cannot start" with "in flight".
-  Expected outcome: a draft is tracked as in-progress work, and `blocked` is
-  reserved for items with a recorded cause. Tracked as **issue #13**, and now
-  the item Trajectory itself nominates as highest-leverage. Not to be started
-  without an explicit go-ahead.
+- **Distinguish a work-in-progress draft from a genuinely blocked item**
+  (**issue #13**, implemented, awaiting live acceptance). A draft pull request
+  normalised to `blocked`, which read to the model as an unresolved external
+  obstacle and led the Executive Signal to describe PR #12 as "blocked with no
+  recorded cause" and to recommend naming the blocker, when the pull request
+  was simply still being written. Draft-ness is now source metadata carried
+  beside the status, and `blocked` requires recorded obstruction — a blocked
+  label at the source or a local `blockedBy` link. The five canonical statuses
+  are unchanged. Remaining: live acceptance on Preview against a real draft
+  pull request, including the blocked-label transition in both directions.
 - **Exercise the provider-failure and retry path on a physical device.** The
   stale-signal label and same-transcript retry are verified in desktop
   Chromium; the successful path is verified on device. Expected outcome:
