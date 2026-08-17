@@ -1,0 +1,36 @@
+name: Backup package 2026-08-17
+
+on:
+  push:
+    branches:
+      - backup-package/2026-08-17
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout frozen snapshot with full history
+        uses: actions/checkout@v4
+        with:
+          ref: backup/2026-08-17-full-snapshot
+          fetch-depth: 0
+
+      - name: Create source archive and Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --all --tags --prune
+          git archive --format=zip --output="Trajectory-Always-On-Executive-Intelligence-2026-08-17.zip" HEAD
+          git bundle create "Trajectory-Always-On-Executive-Intelligence-2026-08-17.bundle" --all
+
+      - name: Upload backup package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trajectory-Always-On-Executive-Intelligence-2026-08-17
+          path: |
+            Trajectory-Always-On-Executive-Intelligence-2026-08-17.zip
+            Trajectory-Always-On-Executive-Intelligence-2026-08-17.bundle
+          retention-days: 90
