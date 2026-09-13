@@ -1,19 +1,17 @@
 /**
- * Permission model.
+ * The permission decision, as a pure function.
  *
- * Five ascending tiers. An action declares the tier it needs; this decides
- * whether it proceeds, is downgraded, or is refused.
+ * Split out from the composed module so the rules can be asserted directly
+ * rather than inferred through a connector registry and a request-scoped
+ * store. Nothing here reads configuration or performs I/O.
  *
- * Two independent ceilings must both allow a tier:
- *   1. The capability's declared ceiling (in the connector definition) — a hard
- *      cap that policy cannot raise. `read_messages` can never reach `execute`.
- *   2. The owner's policy for that capability — defaults to `recommend`.
- *
- * `execute` is opt-in per capability and never inherited from a wildcard.
+ * These tiers describe **how much action is being requested**. They are not a
+ * verdict on whether a proposed external transition may execute — that is a
+ * separate decision, made by a separate authority, and the two vocabularies
+ * are kept apart deliberately.
  */
 
-import { getConnector } from "@/lib/connectors";
-import type { ActionTier, PermissionPolicy } from "@/lib/types";
+import type { ActionTier, PermissionPolicy } from "../types.ts";
 
 export const TIER_ORDER: ActionTier[] = [
   "observe",
@@ -59,12 +57,12 @@ export interface PermissionDecision {
   reason: string;
 }
 
-function resolvePolicy(
+/** Most specific wins: connector+capability, then capability, then wildcard. */
+export function resolvePolicy(
   policies: PermissionPolicy[],
   connectorId: string | undefined,
   capability: string,
 ): PermissionPolicy | undefined {
-  // Most specific wins: exact connector+capability, then capability, then wildcard.
   return (
     policies.find((p) => p.connectorId === connectorId && p.capability === capability) ??
     policies.find((p) => !p.connectorId && p.capability === capability) ??
@@ -72,20 +70,29 @@ function resolvePolicy(
   );
 }
 
-export function evaluate(input: {
+export interface DecideInput {
   connectorId?: string;
   capability: string;
   requestedTier: ActionTier;
-  policies?: PermissionPolicy[];
-}): PermissionDecision {
-  const { connectorId, capability, requestedTier } = input;
-  const policies = input.policies ?? DEFAULT_POLICIES;
+  policies: PermissionPolicy[];
+  /**
+   * The capability's declared hard ceiling, or `null` when the connector is
+   * known but does not declare the capability at all.
+   */
+  declaredCeiling: ActionTier | null;
+  /** False when the connector id was not recognised. */
+  connectorKnown: boolean;
+}
 
-  // Ceiling 1: what the capability is even allowed to do.
-  const connector = connectorId ? getConnector(connectorId) : undefined;
-  const declared = connector?.capabilities.find((c) => c.id === capability);
+/**
+ * Two independent ceilings must both allow a tier: the capability's declared
+ * hard cap, which policy can never raise, and the owner's policy for that
+ * capability, which defaults to `recommend`.
+ */
+export function decide(input: DecideInput): PermissionDecision {
+  const { connectorId, capability, requestedTier, policies } = input;
 
-  if (connectorId && connector && !declared) {
+  if (connectorId && input.connectorKnown && input.declaredCeiling === null) {
     return {
       allowed: false,
       effectiveTier: "observe",
@@ -95,9 +102,7 @@ export function evaluate(input: {
     };
   }
 
-  const hardCeiling = declared?.maxTier ?? "recommend";
-
-  // Ceiling 2: what policy permits.
+  const hardCeiling = input.declaredCeiling ?? "recommend";
   const policy = resolvePolicy(policies, connectorId, capability);
   const policyCeiling = policy?.maxTier ?? "recommend";
 

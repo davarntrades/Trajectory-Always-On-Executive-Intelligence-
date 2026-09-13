@@ -25,7 +25,10 @@ import type {
   TrajectoryAction,
   TrajectoryEvent,
   TrajectoryState,
+  PermissionPolicy,
 } from "@/lib/types";
+import { DEFAULT_POLICIES } from "@/lib/permissions/resolve";
+import { isWorkItemStatus, type WorkItem, type WorkItemSource } from "@/lib/work/types";
 import {
   seedCalendar,
   seedEntities,
@@ -58,6 +61,12 @@ export interface TrajectoryStore {
   goals(): Promise<Goal[]>;
   projects(): Promise<Project[]>;
   tasks(): Promise<Task[]>;
+  /**
+   * Live canonical work. Separate from `tasks()` because the records have
+   * different owners — GitHub is authoritative for work items, the user for
+   * tasks — but both are projected into one deterministic engine.
+   */
+  workItems(): Promise<WorkItem[]>;
   opportunities(): Promise<Opportunity[]>;
   events(sinceDays?: number): Promise<TrajectoryEvent[]>;
   memories(): Promise<Memory[]>;
@@ -70,6 +79,12 @@ export interface TrajectoryStore {
   notifications(limit?: number): Promise<StoredNotification[]>;
   appendNotification(n: StoredNotification): Promise<void>;
 
+  /**
+   * The owner's permission policy. Returns the built-in defaults when nothing
+   * has been stored, so a caller can never end up with an empty policy set and
+   * an unbounded ceiling.
+   */
+  permissionPolicies(): Promise<PermissionPolicy[]>;
   actions(): Promise<TrajectoryAction[]>;
   saveAction(action: TrajectoryAction): Promise<void>;
   auditLog(limit?: number): Promise<AuditEntry[]>;
@@ -108,6 +123,11 @@ class SeedStore implements TrajectoryStore {
   }
   async tasks() {
     return seedTasks;
+  }
+  async workItems(): Promise<WorkItem[]> {
+    // The seed store predates work items and has no GitHub ingestion behind
+    // it. Returning an empty set is accurate, not a stub.
+    return [];
   }
   async opportunities() {
     return seedOpportunities;
@@ -159,6 +179,9 @@ class SeedStore implements TrajectoryStore {
     memoryState.notifications = memoryState.notifications.slice(0, 200);
   }
 
+  async permissionPolicies(): Promise<PermissionPolicy[]> {
+    return DEFAULT_POLICIES;
+  }
   async actions() {
     return memoryState.actions;
   }
@@ -223,6 +246,16 @@ class SupabaseStore implements TrajectoryStore {
   }
   async tasks() {
     return (await this.select("tasks")).map(mapTask);
+  }
+  async workItems(): Promise<WorkItem[]> {
+    // `work_items` is scoped by `user_id`, not the `owner_id` the other tables
+    // use, so this cannot go through `select()`.
+    const { data, error } = await this.client
+      .from("work_items")
+      .select(WORK_ITEM_COLUMNS)
+      .eq("user_id", this.ownerId);
+    if (error) throw new Error(`work_items: ${error.message}`);
+    return (data ?? []).map((row) => mapWorkItem(row as Row));
   }
   async opportunities() {
     return (await this.select("opportunities")).map(mapOpportunity);
@@ -361,6 +394,18 @@ class SupabaseStore implements TrajectoryStore {
     if (error) throw new Error(`appendNotification: ${error.message}`);
   }
 
+  async permissionPolicies(): Promise<PermissionPolicy[]> {
+    const rows = await this.select("permission_policies");
+    // No stored rows means the owner has never narrowed or widened anything.
+    // Falling back to the defaults keeps the ceiling conservative; returning an
+    // empty set would resolve every capability to "no policy found".
+    if (!rows.length) return DEFAULT_POLICIES;
+    return rows.map((row) => ({
+      connectorId: (row.connector_id as string) ?? undefined,
+      capability: row.capability as string,
+      maxTier: row.max_tier as PermissionPolicy["maxTier"],
+    }));
+  }
   async actions() {
     const rows = await this.select("actions");
     return rows.map((a) => ({
@@ -437,6 +482,38 @@ function mapEntity(e: Row): Entity {
     attributes: (e.attributes as Record<string, unknown>) ?? {},
     salience: (e.salience as number) ?? 0.5,
     lastSeenAt: e.last_seen_at as string,
+  };
+}
+
+const WORK_ITEM_COLUMNS =
+  "canonical_id, title, detail, status, source, external_repository, external_number, external_url, draft, blocked_by, created_at, updated_at, completed_at, superseded_at, superseded_by, reopened_at";
+
+/**
+ * Mirrors the mapping in `@/lib/work/repository`, which cannot be reused here:
+ * that module is request-scoped through `requireUser()`, while this store is
+ * also driven by cookie-less background work under an explicit owner id.
+ */
+function mapWorkItem(row: Row): WorkItem {
+  const repository = (row.external_repository as string) ?? null;
+  const number = (row.external_number as number) ?? null;
+  return {
+    id: row.canonical_id as string,
+    title: row.title as string,
+    detail: (row.detail as string) ?? undefined,
+    status: isWorkItemStatus(row.status) ? row.status : "open",
+    source: row.source as WorkItemSource,
+    externalRef:
+      repository && number !== null
+        ? { repository, number, url: (row.external_url as string) ?? "" }
+        : undefined,
+    draft: row.draft ? true : undefined,
+    blockedBy: (row.blocked_by as string[]) ?? [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+    completedAt: (row.completed_at as string) ?? undefined,
+    supersededAt: (row.superseded_at as string) ?? undefined,
+    supersededBy: (row.superseded_by as string) ?? undefined,
+    reopenedAt: (row.reopened_at as string) ?? undefined,
   };
 }
 

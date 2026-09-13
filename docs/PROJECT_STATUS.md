@@ -16,6 +16,79 @@ thinking while the user was away.
 
 ## Current Production State
 
+### Delegation prerequisites (13 September 2026)
+
+Three prerequisites were completed before any delegated-work architecture is
+built. Each closes a defect that would otherwise have been inherited by every
+layer above it.
+
+**Draft state semantics — merged.** PR #14 landed as `cb42e19`, closing issue
+#13. `blocked` now means recorded obstruction; draft-ness is source metadata.
+
+**Live work reconciled into deterministic state.** Trajectory carried two
+records of work that never met: `tasks` drove the engine — candidates,
+bottleneck, waiting, blocked — while `work_items` held the real, live GitHub
+state and reached the model only as prompt text. The engine could not see the
+user's actual work, and the backlog could not see leverage or momentum.
+
+Work items are now **projected** into the task vocabulary the engine already
+consumes (`src/lib/work/projection.ts`), and `computeState` merges them before
+`runEngine`. This is a projection, not a second work system: work items remain
+the single record of live work.
+
+Two mapping decisions are load-bearing. A draft projects as `in_progress`, so
+the engine treats it as started rather than obstructed. `superseded` projects
+as `done`, because `computeCandidates` refuses to offer a task whose blockers
+are not `done` — an abandoned blocker in any non-terminal status would hold its
+dependents shut permanently.
+
+Projected items carry **uniform** placeholder impact and effort. GitHub records
+carry no such estimate, and inventing differentiated values would put
+fabricated precision inside an engine whose purpose is that its inputs can be
+inspected. Ranking among projected items is therefore decided only by evidence
+Trajectory actually holds: the blocking graph, status and recency. Deriving
+real weights is future work and must not be guessed at.
+
+**Action and permission bypasses closed.**
+
+- *Autonomous execution granted its own authority.* The gate read
+  `status !== "approved" && tier !== "execute"`, so an action created at tier
+  `execute` ran with no human decision and no external check. Execution now
+  goes through `executionGate` (`src/lib/actions/gate.ts`), which fails closed.
+  An exhaustive test asserts that of all thirty status-and-tier combinations,
+  exactly one — `approve/approved` — permits execution.
+- *Stored permission policy was never loaded.* `propose()` called `evaluate()`
+  without policies, so every decision silently used the built-in defaults and
+  rows in `permission_policies` had no effect. The store now exposes
+  `permissionPolicies()`, falling back to the defaults when nothing is stored.
+- *`/api/actions` had no session check* on GET, propose or execute. It relied on
+  `getStore()` throwing, answering 500 where every other route answers 401.
+
+**Trajectory permission tiers are not an execution verdict.** A tier says how
+much action was requested and permitted. Whether a proposed external transition
+may take place is a separate decision by a separate authority, and no local
+implementation emits or imitates that authority's vocabulary. Autonomous
+execution is refused today because no authority capable of deciding it is wired
+in — a capability that cannot be evaluated is never one that proceeds. The
+refusal records `awaitingAuthority`, distinguishing "refused for want of an
+authority" from "refused on the action's own state".
+
+Seventy-five regression tests pass, up from forty-one. The engine, permission
+model and execution gate had no coverage at all before this work.
+
+### Paused production database
+
+The `trajectory-prod` Supabase project is **INACTIVE** and refuses connections.
+Production Trajectory cannot be serving traffic in this state. Two migrations
+are therefore unapplied and must land, in order, before the deployed code runs
+a sync:
+
+1. `20260809190000_work_item_draft_state.sql` — adds `work_items.draft`.
+   Without it the new code's upsert is rejected and the whole sync fails.
+
+No migration is required by the reconciliation or bypass work: both read
+columns that already exist.
+
 ### Live open-work ingestion — accepted in production (9 August 2026)
 
 **PR #12 is fully accepted in production.** After the merge, a production
