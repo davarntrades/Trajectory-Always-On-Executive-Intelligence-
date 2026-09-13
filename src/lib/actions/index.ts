@@ -9,6 +9,7 @@
 import { evaluate, requiresApproval } from "@/lib/permissions";
 import { getStore } from "@/lib/store";
 import type { ActionTier, TrajectoryAction } from "@/lib/types";
+import { executionGate } from "./gate";
 
 export interface ProposeInput {
   connectorId?: string;
@@ -21,10 +22,15 @@ export interface ProposeInput {
 
 export async function propose(input: ProposeInput): Promise<TrajectoryAction> {
   const store = await getStore();
+  // The owner's stored policy is the second of the two ceilings. It was
+  // previously never loaded, so `permission_policies` rows had no effect and
+  // every decision silently used the built-in defaults.
+  const policies = await store.permissionPolicies();
   const decision = evaluate({
     connectorId: input.connectorId,
     capability: input.capability,
     requestedTier: input.requestedTier,
+    policies,
   });
 
   // A refused request is still recorded. An action that was attempted and
@@ -96,23 +102,25 @@ export async function decide(
 /**
  * Execute an approved action.
  *
- * Phase 1 has no live connector write paths, so this records the attempt and
- * marks it executed without an external call. When Phase 2 lands, the connector
- * dispatch goes here — the audit contract around it does not change.
+ * Whether execution may proceed is decided by `executionGate`, which fails
+ * closed. There is still no live connector write path, so this records the
+ * attempt and marks it executed without an external call; when a dispatch
+ * lands it goes here, behind the same gate.
  */
 export async function execute(actionId: string): Promise<TrajectoryAction | null> {
   const store = await getStore();
   const action = (await store.actions()).find((a) => a.id === actionId);
   if (!action) return null;
 
-  if (action.status !== "approved" && action.tier !== "execute") {
+  const gate = executionGate(action);
+  if (!gate.permitted) {
     await store.appendAudit({
       actionId,
       at: new Date().toISOString(),
       actor: "trajectory",
-      event: "execution_refused",
+      event: gate.event,
       tier: action.tier,
-      detail: { reason: `status is ${action.status}, not approved` },
+      detail: { reason: gate.reason, awaitingAuthority: gate.awaitingAuthority },
     });
     return action;
   }

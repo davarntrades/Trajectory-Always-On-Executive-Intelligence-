@@ -12,6 +12,7 @@ import type { ProviderPreference } from "@/lib/providers";
 import { runEngine } from "@/lib/state/engine";
 import { synthesise } from "@/lib/state/reasoner";
 import { getStore, type TrajectoryStore } from "@/lib/store";
+import { mergeTasksWithWorkItems } from "@/lib/work/projection";
 import type { Memory, Outlook, TrajectoryState } from "@/lib/types";
 
 export interface ComputeOptions {
@@ -45,15 +46,22 @@ export async function computeState(
   const { persist = true } = options;
   const store = options.store ?? await getStore();
 
-  const [projects, tasks, opportunities, events, entities] = await Promise.all([
+  const [projects, tasks, opportunities, events, entities, workItems] = await Promise.all([
     store.projects(),
     store.tasks(),
     store.opportunities(),
     store.events(30),
     store.entities(),
+    store.workItems(),
   ]);
 
-  const engine = runEngine({ projects, tasks, opportunities, events, entities });
+  // Live GitHub and launch-backlog work is projected into the task vocabulary
+  // so one set of deterministic rules covers both records. Before this, the
+  // engine computed leverage and bottlenecks over seeded tasks while the user's
+  // real open work reached the model only as prompt text.
+  const allTasks = mergeTasksWithWorkItems(tasks, workItems);
+
+  const engine = runEngine({ projects, tasks: allTasks, opportunities, events, entities });
 
   // Memory relevant to *this* state, not a generic dump: query on the objective
   // and the bottleneck, plus the standing preferences and past mistakes that
