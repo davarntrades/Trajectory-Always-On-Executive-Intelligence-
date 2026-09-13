@@ -22,7 +22,12 @@ function ItemRow({ item, onActivate }: { item: WorkItem; onActivate?: (id: strin
   const body = (
     <>
       <span className="work-item-title">{item.title}</span>
-      <span className="work-item-reference">{reference}</span>
+      <span className="work-item-reference">
+        {reference}
+        {/* Unfinished, not obstructed — a draft belongs in open work, and the
+            marker is what stops it reading as an unexplained entry there. */}
+        {item.draft ? <span className="work-item-draft">draft</span> : null}
+      </span>
     </>
   );
   return (

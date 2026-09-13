@@ -103,7 +103,14 @@ export function normaliseGitHubIssue(payload: GitHubIssuePayload, repository: st
 /**
  * A merged pull request is completed. A pull request closed without merging is
  * superseded — the work was abandoned, not delivered — and neither may be
- * recommended again. A draft is tracked but not offered as the next action.
+ * recommended again.
+ *
+ * A draft is open work that happens to be unfinished. It is *not* blocked:
+ * `blocked` is reserved for recorded obstruction, which for a pull request
+ * means a blocked label. Draft-ness travels as source metadata so Trajectory
+ * can say "still in progress" without inferring an obstacle that does not
+ * exist. Terminal items carry no draft flag — work that is finished cannot
+ * also be in progress.
  */
 export function normaliseGitHubPullRequest(
   payload: GitHubPullRequestPayload,
@@ -116,9 +123,10 @@ export function normaliseGitHubPullRequest(
   let status: WorkItemStatus;
   if (merged) status = "completed";
   else if (closedUnmerged) status = "superseded";
-  else if (payload.draft) status = "blocked";
   else if (labels.some((label) => BLOCKED_LABELS.has(label))) status = "blocked";
   else status = "open";
+
+  const terminal = merged || closedUnmerged;
 
   return {
     id: workItemId("github_pull_request", repository, payload.number),
@@ -127,12 +135,30 @@ export function normaliseGitHubPullRequest(
     status,
     source: "github_pull_request",
     externalRef: { repository, number: payload.number, url: payload.html_url },
+    draft: !terminal && payload.draft === true ? true : undefined,
     blockedBy: [],
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
     completedAt: merged ? payload.merged_at ?? payload.updated_at : undefined,
     supersededAt: closedUnmerged ? payload.closed_at ?? payload.updated_at : undefined,
   };
+}
+
+/**
+ * Raises an open item to `blocked` when a local blocker links it to work that
+ * has not finished.
+ *
+ * This is the second of the two routes into `blocked`, the first being a
+ * label at the source. It is applied after merging rather than during
+ * normalisation because `blockedBy` is local state that GitHub knows nothing
+ * about, and it is deliberately idempotent: an item that is already blocked
+ * stays blocked, and clearing the last blocker returns it to open on the next
+ * ingestion.
+ */
+export function withLocalObstruction(item: WorkItem): WorkItem {
+  if (!item.blockedBy.length) return item;
+  if (item.status !== "open") return item;
+  return { ...item, status: "blocked" };
 }
 
 /**
@@ -223,7 +249,10 @@ export function mergeIngested(stored: WorkItem[], ingested: WorkItem[]): WorkIte
   const byId = new Map(stored.map((item) => [item.id, item]));
   for (const item of ingested) {
     const previous = byId.get(item.id);
-    byId.set(item.id, previous ? { ...item, blockedBy: previous.blockedBy } : item);
+    byId.set(
+      item.id,
+      withLocalObstruction(previous ? { ...item, blockedBy: previous.blockedBy } : item),
+    );
   }
   return [...byId.values()];
 }

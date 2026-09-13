@@ -8,6 +8,7 @@ import {
   mergeIngested,
   normaliseGitHubIssue,
   normaliseGitHubPullRequest,
+  type GitHubPullRequestPayload,
   rankOpenWork,
   selectActivePriority,
   selectOpenWork,
@@ -65,7 +66,7 @@ test("a pull request closed without merging is superseded, not completed", () =>
   assert.equal(isRecommendable(workItem), false);
 });
 
-test("an open pull request is open; a draft is blocked", () => {
+test("an open pull request is open, and so is a draft", () => {
   const open = normaliseGitHubPullRequest(
     { number: 12, title: "Live open-work ingestion", state: "open", html_url: "u", created_at: ago(3 * HOUR), updated_at: ago(HOUR) },
     REPO,
@@ -76,9 +77,127 @@ test("an open pull request is open; a draft is blocked", () => {
   );
 
   assert.equal(open.status, "open");
-  assert.equal(draft.status, "blocked");
+  assert.equal(open.draft, undefined, "a ready pull request carries no draft flag");
+  assert.equal(draft.status, "open", "a draft is unfinished, not obstructed");
+  assert.equal(draft.draft, true, "draft-ness is recorded beside the status, not inside it");
   assert.equal(isRecommendable(open), true);
-  assert.equal(isRecommendable(draft), true, "blocked work is still live work");
+  assert.equal(isRecommendable(draft), true);
+});
+
+// --- Draft is not an obstruction (issue #13) -------------------------------
+
+const draftPull = (overrides: Partial<GitHubPullRequestPayload> = {}) =>
+  normaliseGitHubPullRequest(
+    {
+      number: 14,
+      title: "Draft in progress",
+      state: "open",
+      draft: true,
+      html_url: "u",
+      created_at: ago(3 * HOUR),
+      updated_at: ago(HOUR),
+      ...overrides,
+    },
+    REPO,
+  );
+
+test("a draft with a blocked label is blocked, and still marked draft", () => {
+  const item = draftPull({ labels: [{ name: "blocked" }] });
+  assert.equal(item.status, "blocked", "a recorded obstruction still blocks");
+  assert.equal(item.draft, true, "the two facts are independent");
+});
+
+test("a merged draft is completed and carries no draft flag", () => {
+  const item = draftPull({ state: "closed", merged_at: ago(HOUR), closed_at: ago(HOUR) });
+  assert.equal(item.status, "completed");
+  assert.equal(item.completedAt, ago(HOUR));
+  assert.equal(item.draft, undefined, "finished work cannot also be in progress");
+});
+
+test("a draft closed without merging is superseded and carries no draft flag", () => {
+  const item = draftPull({ state: "closed", closed_at: ago(HOUR) });
+  assert.equal(item.status, "superseded");
+  assert.ok(item.supersededAt);
+  assert.equal(item.draft, undefined);
+  assert.equal(isRecommendable(item), false);
+});
+
+test("a local blocker obstructs an open item; clearing it releases the item", () => {
+  const stored = [item({ id: workItemId("github_pull_request", REPO, 14), title: "Draft", blockedBy: ["launch_backlog:x"] })];
+
+  const blocked = mergeIngested(stored, [draftPull()]);
+  assert.equal(blocked[0].status, "blocked", "a recorded local blocker is real obstruction");
+  assert.equal(blocked[0].draft, true);
+
+  const released = mergeIngested(
+    [{ ...blocked[0], blockedBy: [] }],
+    [draftPull()],
+  );
+  assert.equal(released[0].status, "open", "removing the last blocker returns it to open work");
+  assert.equal(released[0].draft, true, "it is still unfinished, just no longer obstructed");
+});
+
+test("re-ingesting a draft preserves the corrected state", () => {
+  const first = mergeIngested([], [draftPull()]);
+  const second = mergeIngested(first, [draftPull()]);
+
+  assert.equal(second.length, 1, "re-ingestion does not duplicate");
+  assert.equal(second[0].id, first[0].id, "canonical ids remain stable");
+  assert.equal(second[0].status, "open", "the corrected status does not drift back to blocked");
+  assert.equal(second[0].draft, true);
+});
+
+test("a draft can be recommended, and appears in open work rather than blocked", () => {
+  const board = buildWorkBoard([draftPull()]);
+  assert.equal(board.blocked.length, 0, "no false blocker is manufactured");
+  assert.equal(board.nextOpen.length, 1);
+  assert.equal(board.nextOpen[0].draft, true);
+
+  // Ranking is what decides whether a draft can lead. It must not be pushed
+  // behind other work merely for being unfinished.
+  const ranked = rankOpenWork([
+    item({ id: "launch_backlog:other", title: "Something else", updatedAt: ago(4 * HOUR) }),
+    draftPull(),
+  ]);
+  assert.equal(ranked[0].draft, true, "a draft can be the highest-ranked open item");
+});
+
+test("draft state reaches the assembled evidence as unfinished, not obstructed", () => {
+  const evidence = buildStateEvidence({
+    trajectory: "steady",
+    riskLevel: "low",
+    eventsLast24h: 0,
+    openWork: [
+      { title: "Draft in progress", kind: "open", reference: "PR #14", draft: true, updatedAt: ago(HOUR) },
+      { title: "Genuinely stuck", kind: "blocked", reference: "issue #9", updatedAt: ago(2 * HOUR) },
+    ],
+    transcript: "What should I focus on now?",
+    now: NOW,
+  });
+
+  assert.match(evidence, /PR #14\] \(open, draft — still being written/);
+  assert.match(evidence, /unfinished, not obstructed/);
+  assert.match(evidence, /never recommend naming one for it/);
+  assert.match(evidence, /a draft can still be the highest-leverage thing/);
+  assert.ok(
+    !/Draft in progress.*blocked/.test(evidence),
+    "the draft must never be described as blocked",
+  );
+});
+
+test("the status vocabulary is omitted when nothing is draft or blocked", () => {
+  // Prompt weight is not free. The explanation is only worth its tokens when
+  // there is something in the list it could be misread against.
+  const evidence = buildStateEvidence({
+    trajectory: "steady",
+    riskLevel: "low",
+    eventsLast24h: 0,
+    openWork: [{ title: "Ordinary work", kind: "open", reference: "issue #8", updatedAt: ago(HOUR) }],
+    transcript: "What should I focus on now?",
+    now: NOW,
+  });
+
+  assert.ok(!/How to read those statuses/.test(evidence));
 });
 
 test("a closed issue is completed; not_planned is superseded", () => {
@@ -331,7 +450,18 @@ test("the live payload set resolves to the statuses observed in production", () 
     (counts, entry) => ({ ...counts, [entry.status]: (counts[entry.status] ?? 0) + 1 }),
     {},
   );
-  assert.deepEqual(tally, { completed: 10, blocked: 1, open: 1 });
+
+  // Before issue #13 this set produced { completed: 10, blocked: 1, open: 1 },
+  // the blocked item being draft PR #12 — the false blocker that made the
+  // Executive Signal ask for a cause that never existed. The same twelve
+  // payloads now produce two open items and nothing blocked.
+  assert.deepEqual(tally, { completed: 10, open: 2 });
+
+  const twelve = ingestLive().find(
+    (entry) => entry.source === "github_pull_request" && entry.externalRef?.number === 12,
+  );
+  assert.equal(twelve?.status, "open", "a draft is open work");
+  assert.equal(twelve?.draft, true, "and is still recorded as unfinished");
 });
 
 test("re-ingesting the same GitHub state does not create duplicate records", () => {

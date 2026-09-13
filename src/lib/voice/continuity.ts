@@ -29,6 +29,8 @@ export interface OpenWorkItem {
   reference?: string;
   /** Whether this is the one current active priority. */
   active?: boolean;
+  /** Still being written. Unfinished work, not obstructed work. */
+  draft?: boolean;
   updatedAt?: string;
 }
 
@@ -119,11 +121,23 @@ export function buildStateEvidence(input: EvidenceInput): string {
           .map((item) => {
             const reference = item.reference ? ` [${item.reference}]` : "";
             const age = item.updatedAt ? `, updated ${relativeAge(item.updatedAt, now)}` : "";
-            return `- ${item.title}${reference} (${item.kind}${age})`;
+            const draft = item.draft ? ", draft — still being written" : "";
+            return `- ${item.title}${reference} (${item.kind}${draft}${age})`;
           })
           .join("\n")}`
       : "Work still open right now: nothing is currently tracked as open.",
   );
+
+  // Without this, "blocked" and "draft" both read as obstruction, and the
+  // recommendation becomes "name the blocker" for work whose only problem is
+  // that it is not finished yet. The distinction is stated next to the data it
+  // applies to rather than in the standing instruction, because that is where
+  // it is read.
+  if (input.openWork.some((item) => item.draft || item.kind === "blocked")) {
+    lines.push(
+      "How to read those statuses: `open` is available to start now. `draft` means a pull request is still being written — it is unfinished, not obstructed, so never treat it as having a blocker and never recommend naming one for it; a draft can still be the highest-leverage thing to work on. `blocked` means an obstruction has actually been recorded against the item, and only then is identifying or clearing it a sensible recommendation.",
+    );
+  }
 
   if (input.completedWork?.length) {
     lines.push(
